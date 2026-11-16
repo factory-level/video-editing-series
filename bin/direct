@@ -16,6 +16,11 @@ case "${1:-}" in
     missing=0
     have ffmpeg; check ffmpeg $? "$(ffmpeg -version 2>/dev/null | sed -n '1s/ Copyright.*//p')"
     have git; check git $? "$(git --version 2>/dev/null)"
+    have gphoto2; check gphoto2 $? "$(gphoto2 --version 2>/dev/null | sed -n '1p' || true)"
+    if have gphoto2; then
+      seen=$(gphoto2 --auto-detect 2>/dev/null | sed '1,2d' | sed 's/  *usb:.*//' | head -1)
+      [ -n "$seen" ]; check 'gphoto2 sees' $? "${seen:-no camera detected by gphoto2}"
+    fi
     if have lsusb; then
       cam=$(lsusb 2>/dev/null | grep -i 'canon' | sed 's/^.*ID [0-9a-f:]* //' | head -1)
       [ -n "$cam" ]; check camera $? "${cam:-no Canon camera on USB (plugged in, switched on, not mounted as storage?)}"

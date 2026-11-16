@@ -87,3 +87,8 @@ These are not settled, and stage 1 cannot be built until they are:
 5. **Raw timeline format** — proposed: an OpenFilm `film.html`, since stage 2 opens it directly.
 6. **Media transfer** — proposed: `rsync` of the take folder to `edit/projects/` on the server.
 7. **Upload target** — where the finished video goes (YouTube or elsewhere) and with what account.
+
+## License
+
+MIT; see [LICENSE](LICENSE). Bundled agent skills and the HyperFrames sample keep their own licenses; see
+[THIRD_PARTY.md](THIRD_PARTY.md).

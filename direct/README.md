@@ -115,5 +115,6 @@ sound. No effects, keying or b-roll happen at this stage.
 
 ## Handoff
 
-`handoff` commits the raw timeline and copies the session's media to the server, where it appears
-as a project under `edit/projects/`.
+`handoff` uploads the session to the edit server, into that server's content folder for the video
+(`<content root>/<video-slug>/`). The upload finishing is what starts stage 2: the server launches
+its agent team, which makes the first edit.

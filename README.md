@@ -61,14 +61,23 @@ Nothing creative happens here. No effects, no keying, no b-roll: only what was s
 
 ## Handoff: laptop → server
 
-Saying "hand it off" makes the shim upload the session to the edit server. A take is handed over as
-one folder: the camera files, the studio audio, the script, and the raw timeline that cuts them.
-The timeline is small text and travels by git; the media is large and travels beside it (copied,
-not committed).
+Saying "hand it off" makes the shim upload the session to the edit server. A session is handed
+over as one folder per video, named by the video's slug: the camera files, the studio audio, the
+script, and the raw timeline that cuts them.
+
+On the server the media lands on a large disk outside this repository, at
+`<content root>/<video-slug>/`. The content root is specific to each machine, so it is written in a
+`PATH.md` at the repository root that is git-ignored and never published. Media is never committed;
+only the small text of a project (timelines, pages, notes) is.
+
+**The upload is the trigger.** When a video's folder has arrived, the server starts its agent team
+with [OpenRig](https://github.com/mvschwarz/openrig), which runs a team of coding agents as one
+system. A video agent, working through MCP tools, makes the first edit from the raw timeline. You
+then review it in a browser, as below.
 
 ## Stage 2: effects edit + upload (server)
 
-The server takes the raw timeline as its starting point and a second team of agents finishes it:
+The server takes the raw timeline as its starting point and the OpenRig team finishes it:
 green screen removal, b-roll overlays, titles, captions, music, effects. Two HTML-to-video tools do
 the work, both built for coding agents:
 
@@ -97,6 +106,7 @@ bin/edit             # stage 2, on the server: list projects, or `bin/edit <proj
 ## Layout
 
 ```
+PATH.md            this machine's content root (git-ignored, you create it)
 bin/direct         stage 1 command
 bin/edit           stage 2 command
 direct/            stage 1, runs on the laptop (not built yet)
@@ -123,7 +133,11 @@ These are not settled, and stage 1 cannot be built until they are:
 4. **Sound capture** — undecided: which device, what records it on the Linux laptop, and whether
    it lives in the same MCP server as the camera.
 5. **Raw timeline format** — proposed: an OpenFilm `film.html`, since stage 2 opens it directly.
-6. **Media transfer** — proposed: `rsync` of the take folder to `edit/projects/` on the server.
+6. **Media transfer** — the destination is decided: `<content root>/<video-slug>/` on the server.
+   Still open: how it is copied (proposed: `rsync` over SSH) and how the server notices the upload
+   is complete.
+8. **The video agent** — which OpenRig team runs after an upload, what its MCP tools are, and how
+   far the first edit goes before a person looks.
 7. **Upload target** — where the finished video goes (YouTube or elsewhere) and with what account.
 
 ## License

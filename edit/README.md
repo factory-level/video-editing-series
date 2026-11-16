@@ -4,8 +4,8 @@ Finish a raw timeline into a video: green screen removal, b-roll, titles, captio
 render and upload. Runs on the server; you review in a browser from another machine on the LAN. See
 the [top-level README](../README.md) for the whole pipeline.
 
-Working today: both editors, on the LAN, with a sample project each. Not built yet: receiving a
-handoff from stage 1, and upload.
+Working today: both editors, on the LAN, with a sample project each; OpenRig is installed. Not built
+yet: receiving a handoff from stage 1, the video agent that makes the first edit, and upload.
 
 ## Setup
 
@@ -16,6 +16,26 @@ Requires Node 22+, ffmpeg and git.
 ```
 
 HyperFrames runs through `npx` and needs no install.
+
+**Content root.** Media lives outside the repository. Create a git-ignored `PATH.md` at the
+repository root naming where, on a disk with room for video:
+
+```
+CONTENT_ROOT=/path/to/content
+```
+
+Each video's media goes in `$CONTENT_ROOT/<video-slug>/`.
+
+**OpenRig.** The agent team that makes the first edit runs under
+[OpenRig](https://github.com/mvschwarz/openrig) (needs tmux and a signed-in Claude Code):
+
+```sh
+npm install -g @openrig/cli              # add --prefix ~/.local if the global prefix needs root
+rig setup --providers claude --no-herdr  # writes an OpenRig block to ~/.tmux.conf
+rig daemon start --no-kernel             # the daemon only; no agents start until a team is launched
+```
+
+The team for this pipeline is not defined yet, so nothing runs after an upload today.
 
 ## Open a project
 

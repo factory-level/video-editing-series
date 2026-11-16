@@ -20,11 +20,11 @@ HyperFrames runs through `npx` and needs no install.
 ## Open a project
 
 ```sh
-edit/launch                    # list projects, and which HyperFrames previews are running
-edit/launch of-demo            # OpenFilm:    prints http://HOST:4747/open?key=...
-edit/launch hf-demo            # HyperFrames: prints http://HOST:3002/#project/hf-demo
-edit/launch hf-demo --stop     # stop that HyperFrames preview
-edit/launch --stop-openfilm    # stop OpenFilm Studio (it serves every OpenFilm project)
+bin/edit                    # list projects, and which HyperFrames previews are running
+bin/edit of-demo            # OpenFilm:    prints http://HOST:4747/open?key=...
+bin/edit hf-demo            # HyperFrames: prints http://HOST:3002/#project/hf-demo
+bin/edit hf-demo --stop     # stop that HyperFrames preview
+bin/edit --stop-openfilm    # stop OpenFilm Studio (it serves every OpenFilm project)
 ```
 
 A folder in `projects/` with a `film.html` is an OpenFilm project; one with a `hyperframes.json` is

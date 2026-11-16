@@ -56,19 +56,30 @@ the work, both built for coding agents:
 You review and adjust from any browser on the LAN:
 
 ```sh
-edit/launch              # list projects and what is running
-edit/launch <project>    # start its editor and print the address to open
+bin/edit              # list projects and what is running
+bin/edit <project>    # start its editor and print the address to open
 ```
 
 Then render and upload. See [`edit/README.md`](edit/README.md) for setup, the LAN details and their
 limits.
 
+## Commands
+
+Two commands at the root, one per stage:
+
+```sh
+bin/direct           # stage 1, on the laptop: `bin/direct doctor` checks the machine; recording is not built yet
+bin/edit             # stage 2, on the server: list projects, or `bin/edit <project>` to open its editor
+```
+
 ## Layout
 
 ```
+bin/direct         stage 1 command
+bin/edit           stage 2 command
 direct/            stage 1, runs on the laptop (not built yet)
 edit/              stage 2, runs on the server
-  launch           open a project's editor on the LAN
+  launch           what bin/edit runs
   projects/        one folder per video (of-demo and hf-demo are working samples)
   bin/openfilm     OpenFilm, pinned and patched to serve the LAN
   tools/openfilm   that pinned copy and its patch

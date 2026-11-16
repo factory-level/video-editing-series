@@ -17,6 +17,9 @@ microphone are plugged into. See the [top-level README](../README.md) for the wh
 
 ## Commands the shim offers
 
+Run as `bin/direct <command>` from the repo root. Today only `bin/direct doctor` works: it checks the
+machine for ffmpeg, git, a Canon camera on USB and an audio input. The rest answer "not built yet".
+
 `load <script>` · `roll` · `cut` · `status` · `prompter start | pause | to <line> | speed <n>` ·
 `keep` / `discard` (the last take) · `handoff` (send the session to the server)
 

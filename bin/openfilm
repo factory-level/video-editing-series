@@ -1,0 +1,11 @@
+#!/bin/sh
+# OpenFilm from this repo's pinned, LAN-patched copy (tools/openfilm). Use this instead of `npx -y openfilm@latest`.
+here=$(dirname "$(readlink -f "$0")")
+cli="$here/../tools/openfilm/node_modules/openfilm/bin/openfilm.mjs"
+[ -f "$cli" ] || { echo "openfilm is not installed: run (cd tools/openfilm && npm install)" >&2; exit 1; }
+if [ -z "$OPENFILM_LAN_HOST" ]; then
+  OPENFILM_LAN_HOST=$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')
+fi
+[ -n "$OPENFILM_LAN_HOST" ] && export OPENFILM_LAN_HOST
+export OPENFILM_NO_BROWSER="${OPENFILM_NO_BROWSER:-1}"
+exec node "$cli" "$@"

@@ -1,0 +1,11 @@
+{
+  "name": "openfilm-lan",
+  "private": true,
+  "description": "Pinned OpenFilm with a patch that lets Studio serve the LAN when OPENFILM_LAN_HOST is set.",
+  "scripts": {
+    "postinstall": "node apply-lan-patch.mjs"
+  },
+  "dependencies": {
+    "openfilm": "0.3.2"
+  }
+}

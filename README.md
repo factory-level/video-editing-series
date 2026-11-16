@@ -12,7 +12,7 @@ Requires Node 22+, ffmpeg and git. Renders and caches are git-ignored.
 
 ```sh
 cd hf-demo && npx -y hyperframes@latest render      # -> hf-demo/renders/*.mp4
-cd of-demo && npx -y openfilm@latest render         # -> of-demo/of-demo.mp4
+cd of-demo && ../bin/openfilm render                # -> of-demo/of-demo.mp4
 ```
 
 ## Edit in a browser from another machine on the LAN
@@ -30,14 +30,26 @@ npx -y hyperframes@latest preview --stop           # stop it
 
 The preview has no login: anyone on the network can open and edit the project while it runs.
 
-**OpenFilm** Studio only listens on 127.0.0.1 and only answers requests addressed to
-127.0.0.1/localhost (ports 4747 and 4748), with no option to change that. Reach it by forwarding
-both ports over SSH from the machine whose browser you want to use:
+**OpenFilm** Studio is loopback-only as shipped, so this repo runs a pinned copy with a small patch
+(`tools/openfilm/apply-lan-patch.mjs`) through the `bin/openfilm` wrapper. The wrapper sets
+`OPENFILM_LAN_HOST` to this machine's LAN address; with it set, Studio listens on all interfaces
+(ports 4747 and 4748) and uses that address for its pages.
 
 ```sh
-# on this machine
-cd of-demo && OPENFILM_NO_BROWSER=1 npx -y openfilm@latest open .     # prints http://127.0.0.1:4747/open?key=...
-# on the other machine
-ssh -N -L 4747:127.0.0.1:4747 -L 4748:127.0.0.1:4748 USER@HOST
-# then open the printed http://127.0.0.1:4747/open?key=... address there (Chrome or Edge)
+(cd tools/openfilm && npm install)      # once: installs openfilm and applies the patch
+bin/openfilm open of-demo               # prints http://HOST:4747/open?key=...
 ```
+
+Open the printed address from the other machine, in Chrome or Edge. The key in it is required and
+changes each time Studio starts. Always use `bin/openfilm`, not `npx openfilm@latest`: a newer
+unpatched CLI would replace the running Studio with a loopback-only one.
+
+Limits:
+
+- Plain HTTP on a LAN address is not a browser "secure context", so saving or importing custom panel
+  layouts, some copy buttons and microphone recording do not work. To enable them on a client, add
+  `http://HOST:4747,http://HOST:4748` under `chrome://flags/#unsafely-treat-insecure-origin-as-secure`.
+- "Sign in to OpenFilm" does not complete from a remote browser; paste service API keys instead.
+- The key travels unencrypted, and the ports are also reachable from this machine's Docker networks.
+- To upgrade OpenFilm, bump the version in `tools/openfilm/package.json` and run `npm install`; the
+  patch script stops with an error naming what moved if the new version changed the patched lines.

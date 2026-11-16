@@ -20,7 +20,7 @@ runs the session for you.
 desk, so something has to connect them. For simplicity that is a single tunnel: a small control
 shim runs on the laptop, the tunnel gives it one public HTTPS address, and ChatGPT is connected to
 that address. There is no app to install, no port to open on the router, and nothing else to host.
-When you say "roll" or "back to line twelve", ChatGPT calls the shim through the tunnel and the
+When you say "roll" or "slower", ChatGPT calls the shim through the tunnel and the
 shim does the work locally.
 
 ```
@@ -32,8 +32,9 @@ you ── voice ──> ChatGPT ── tunnel ──> control shim (laptop) ─
 
 **Direct.** Through the tunnel, the voice session controls four things:
 
-- **Teleprompter** — its own git repo. Load a script, start, pause, scroll back to a line, change
-  speed.
+- **Teleprompter** — [Abhishekingle662/teleprompter](https://github.com/Abhishekingle662/teleprompter)
+  v0.3.0, a desktop app for Windows, macOS and Linux. Load a script, play, pause, go faster or
+  slower, return to the top.
 - **Sound capture** — the studio microphone: start and stop recording with each take. How it is
   captured is not decided yet.
 - **Camera** — the Canon Rebel T6i over USB, through a Linux camera-control project wrapped by the
@@ -110,7 +111,8 @@ edit/              stage 2, runs on the server
 
 These are not settled, and stage 1 cannot be built until they are:
 
-1. **Teleprompter repo** — which repository, and how it is controlled (HTTP, WebSocket, keys).
+1. **Teleprompter** — decided: Abhishekingle662/teleprompter v0.3.0. See
+   [`direct/README.md`](direct/README.md#teleprompter) for how it is controlled and what it cannot do.
 2. **Camera USB project** — a Linux project for controlling the T6i over USB; which one, and what
    it exposes, is still to be named.
 3. **The tunnel** — decided in principle: ChatGPT reaches the shim through one tunnel. Still to

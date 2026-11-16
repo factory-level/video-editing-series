@@ -13,17 +13,34 @@ built yet; see [Open decisions](#open-decisions).
 
 ## Stage 1: direct + raw edit (laptop)
 
-You record alone. ChatGPT Advanced Voice is the director: you talk to it with its sound off, and it
-drives the session through a small control shim on the laptop.
+You record alone. ChatGPT in voice mode is the director: you talk to it with its sound off, and it
+runs the session for you.
 
-**Direct.** The voice session controls three things:
+**How ChatGPT reaches the laptop: a tunnel.** ChatGPT runs in the cloud and the equipment is on your
+desk, so something has to connect them. For simplicity that is a single tunnel: a small control
+shim runs on the laptop, the tunnel gives it one public HTTPS address, and ChatGPT is connected to
+that address. There is no app to install, no port to open on the router, and nothing else to host.
+When you say "roll" or "back to line twelve", ChatGPT calls the shim through the tunnel and the
+shim does the work locally.
+
+```
+you ── voice ──> ChatGPT ── tunnel ──> control shim (laptop) ──> teleprompter
+                                                             ──> sound capture (studio mic)
+                                                             ──> camera: download the take's video
+                                                             ──> upload the take to the edit server
+```
+
+**Direct.** Through the tunnel, the voice session controls four things:
 
 - **Teleprompter** — its own git repo. Load a script, start, pause, scroll back to a line, change
   speed.
-- **Camera** — a Canon Rebel T6i over USB, through a USB camera-control project wrapped by a shim:
-  start and stop recording, check that it is rolling.
-- **Mic input** — the studio microphone: arm, start and stop its recording together with the
-  camera, so every take has both.
+- **Sound capture** — the studio microphone: start and stop recording with each take.
+- **Video download** — the Canon Rebel T6i over USB, through a USB camera-control project wrapped
+  by the shim: after a take, pull its video file off the camera onto the laptop.
+- **Upload to the edit server** — send the finished session to the server for stage 2.
+
+The tunnel carries only these short commands and their answers. Video and audio never pass through
+ChatGPT: they go from the laptop straight to the edit server.
 
 Each take leaves two recordings of the same performance: the camera's video with its own **scratch
 audio**, and the microphone's **studio audio**.
@@ -40,9 +57,10 @@ Nothing creative happens here. No effects, no keying, no b-roll: only what was s
 
 ## Handoff: laptop → server
 
-A take is handed over as one folder: the camera files, the studio audio, the script, and the raw
-timeline that cuts them. The timeline is small text and travels by git; the media is large and
-travels beside it (copied, not committed).
+Saying "hand it off" makes the shim upload the session to the edit server. A take is handed over as
+one folder: the camera files, the studio audio, the script, and the raw timeline that cuts them.
+The timeline is small text and travels by git; the media is large and travels beside it (copied,
+not committed).
 
 ## Stage 2: effects edit + upload (server)
 
@@ -92,9 +110,10 @@ These are not settled, and stage 1 cannot be built until they are:
 
 1. **Teleprompter repo** — which repository, and how it is controlled (HTTP, WebSocket, keys).
 2. **Camera USB project** — which project drives the T6i, and what it exposes.
-3. **How ChatGPT reaches the laptop** — Advanced Voice has to call the control shim somehow (a
-   connector the shim serves, or another route). This decides the shim's shape.
-4. **Mic recording** — which device and which recorder on the laptop.
+3. **The tunnel** — decided in principle: ChatGPT reaches the shim through one tunnel. Still to
+   choose and prove: which tunnel, how ChatGPT is connected to it, how the address is protected so
+   only your ChatGPT can call it, and that voice mode can trigger those calls.
+4. **Sound capture** — which device and which recorder on the laptop.
 5. **Raw timeline format** — proposed: an OpenFilm `film.html`, since stage 2 opens it directly.
 6. **Media transfer** — proposed: `rsync` of the take folder to `edit/projects/` on the server.
 7. **Upload target** — where the finished video goes (YouTube or elsewhere) and with what account.

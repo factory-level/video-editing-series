@@ -1,0 +1,46 @@
+#!/bin/sh
+# Open a project from edit/projects for editing in a browser on the LAN.
+#   edit/launch                 list projects and what is running
+#   edit/launch <name>          start (or reuse) the editor for that project and print its LAN address
+#   edit/launch <name> --stop   stop a HyperFrames preview (OpenFilm Studio is shared: `edit/launch --stop-openfilm`)
+# A folder with film.html is an OpenFilm project; one with hyperframes.json is a HyperFrames project.
+set -eu
+here=$(dirname "$(readlink -f "$0")")
+projects="$here/projects"
+lan=${EDIT_LAN_HOST:-$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')}
+[ -n "$lan" ] || { echo "could not find this machine's LAN address; set EDIT_LAN_HOST" >&2; exit 1; }
+hf() { HYPERFRAMES_PREVIEW_HOST=0.0.0.0 DO_NOT_TRACK=1 npx -y hyperframes@0.9.58 "$@"; }
+kind() {
+  if [ -f "$1/film.html" ]; then echo openfilm
+  elif [ -f "$1/hyperframes.json" ]; then echo hyperframes
+  else echo unknown; fi
+}
+
+if [ $# -eq 0 ]; then
+  for dir in "$projects"/*/; do
+    [ -d "$dir" ] && printf '%-24s %s\n' "$(basename "$dir")" "$(kind "$dir")"
+  done
+  echo; echo "running HyperFrames previews:"; hf preview --list 2>&1 | sed 's/^/  /'
+  exit 0
+fi
+if [ "$1" = --stop-openfilm ]; then
+  run="${OPENFILM_HOME:-$HOME/.openfilm}/run.json"
+  [ -f "$run" ] || { echo "OpenFilm Studio is not running"; exit 0; }
+  kill $(sed -E 's/.*"pid":([0-9]+).*/\1/' "$run") $(sed -nE 's/.*"supervisor":([0-9]+).*/\1/p' "$run") 2>/dev/null || true
+  echo "stopped OpenFilm Studio"; exit 0
+fi
+
+name=$1; dir="$projects/$name"
+[ -d "$dir" ] || { echo "no project $name in $projects" >&2; exit 1; }
+case "$(kind "$dir")" in
+  openfilm)
+    [ "${2:-}" = --stop ] && { echo "OpenFilm Studio serves every project; stop it with: edit/launch --stop-openfilm" >&2; exit 1; }
+    OPENFILM_LAN_HOST=$lan "$here/bin/openfilm" open "$dir" ;;
+  hyperframes)
+    if [ "${2:-}" = --stop ]; then hf preview "$dir" --stop; exit 0; fi
+    out=$(hf preview "$dir" --background --no-open 2>&1) || { echo "$out" >&2; exit 1; }
+    port=$(printf '%s\n' "$out" | sed -n 's#.*Server *http://localhost:\([0-9]*\).*#\1#p' | head -1)
+    echo "project  $dir"
+    echo "Studio   http://$lan:${port:-3002}/#project/$name" ;;
+  *) echo "$name is neither an OpenFilm (film.html) nor a HyperFrames (hyperframes.json) project" >&2; exit 1 ;;
+esac

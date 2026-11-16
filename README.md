@@ -1,55 +1,89 @@
 # video
 
-Workspace for making videos with coding agents, using two HTML-to-video tools:
+A two-stage, two-machine pipeline for recording and finishing narrated videos, driven by voice and
+by coding agents.
 
-- [OpenFilm](https://github.com/openfilm/openfilm) — `of-demo/` (a `film.html` plus pages exposing `window.film.frame(t)`)
-- [HyperFrames](https://github.com/heygen-com/hyperframes) — `hf-demo/` (HTML compositions)
+| Stage | Folder | Machine | What happens | Output |
+| --- | --- | --- | --- | --- |
+| 1. Direct + raw edit (live) | [`direct/`](direct/) | Laptop, at the camera | Record takes hands-free, then cut them into a clean raw narration | A take folder with a raw timeline |
+| 2. Effects edit + upload | [`edit/`](edit/) | Server | Green screen removal, b-roll, effects, review in a browser, render, upload | The finished video, published |
 
-Agent skills for both live in `.claude/skills/` (pinned in `skills-lock.json`).
-Requires Node 22+, ffmpeg and git. Renders and caches are git-ignored.
+Status: stage 2's editors are set up and working. Stage 1 and the handoff are designed here but not
+built yet; see [Open decisions](#open-decisions).
 
-## Render
+## Stage 1: direct + raw edit (laptop)
+
+You record alone. ChatGPT Advanced Voice is the director: you talk to it with its sound off, and it
+drives the session through a small control shim on the laptop.
+
+**Direct.** The voice session controls three things:
+
+- **Teleprompter** — its own git repo. Load a script, start, pause, scroll back to a line, change
+  speed.
+- **Camera** — a Canon Rebel T6i over USB, through a USB camera-control project wrapped by a shim:
+  start and stop recording, check that it is rolling.
+- **Mic input** — the studio microphone: arm, start and stop its recording together with the
+  camera, so every take has both.
+
+Each take leaves two recordings of the same performance: the camera's video with its own **scratch
+audio**, and the microphone's **studio audio**.
+
+**Raw edit (live).** As takes land, a team of editor agents on the laptop turns them into raw
+narration:
+
+1. Align the scratch audio to the studio audio, so the studio track replaces the camera's sound in
+   sync.
+2. Remove the gaps: silences, false starts and retakes, checked against the teleprompter script.
+3. Write a **raw timeline**: the kept ranges of picture and studio sound, in order.
+
+Nothing creative happens here. No effects, no keying, no b-roll: only what was said, tightened.
+
+## Handoff: laptop → server
+
+A take is handed over as one folder: the camera files, the studio audio, the script, and the raw
+timeline that cuts them. The timeline is small text and travels by git; the media is large and
+travels beside it (copied, not committed).
+
+## Stage 2: effects edit + upload (server)
+
+The server takes the raw timeline as its starting point and a second team of agents finishes it:
+green screen removal, b-roll overlays, titles, captions, music, effects. Two HTML-to-video tools do
+the work, both built for coding agents:
+
+- [OpenFilm](https://github.com/openfilm/openfilm) — a `film.html` timeline of clips and pages.
+- [HyperFrames](https://github.com/heygen-com/hyperframes) — HTML compositions rendered to video.
+
+You review and adjust from any browser on the LAN:
 
 ```sh
-cd hf-demo && npx -y hyperframes@latest render      # -> hf-demo/renders/*.mp4
-cd of-demo && ../bin/openfilm render                # -> of-demo/of-demo.mp4
+edit/launch              # list projects and what is running
+edit/launch <project>    # start its editor and print the address to open
 ```
 
-## Edit in a browser from another machine on the LAN
+Then render and upload. See [`edit/README.md`](edit/README.md) for setup, the LAN details and their
+limits.
 
-Replace `HOST` with this machine's LAN address.
+## Layout
 
-**HyperFrames** binds to the LAN when `HYPERFRAMES_PREVIEW_HOST` is set (already set for agent
-sessions in `.claude/settings.json`):
-
-```sh
-cd hf-demo && HYPERFRAMES_PREVIEW_HOST=0.0.0.0 npx -y hyperframes@latest preview --background --no-open
-# then browse to http://HOST:3002
-npx -y hyperframes@latest preview --stop           # stop it
+```
+direct/            stage 1, runs on the laptop (not built yet)
+edit/              stage 2, runs on the server
+  launch           open a project's editor on the LAN
+  projects/        one folder per video (of-demo and hf-demo are working samples)
+  bin/openfilm     OpenFilm, pinned and patched to serve the LAN
+  tools/openfilm   that pinned copy and its patch
+.claude/skills/    agent skills for OpenFilm and HyperFrames
 ```
 
-The preview has no login: anyone on the network can open and edit the project while it runs.
+## Open decisions
 
-**OpenFilm** Studio is loopback-only as shipped, so this repo runs a pinned copy with a small patch
-(`tools/openfilm/apply-lan-patch.mjs`) through the `bin/openfilm` wrapper. The wrapper sets
-`OPENFILM_LAN_HOST` to this machine's LAN address; with it set, Studio listens on all interfaces
-(ports 4747 and 4748) and uses that address for its pages.
+These are not settled, and stage 1 cannot be built until they are:
 
-```sh
-(cd tools/openfilm && npm install)      # once: installs openfilm and applies the patch
-bin/openfilm open of-demo               # prints http://HOST:4747/open?key=...
-```
-
-Open the printed address from the other machine, in Chrome or Edge. The key in it is required and
-changes each time Studio starts. Always use `bin/openfilm`, not `npx openfilm@latest`: a newer
-unpatched CLI would replace the running Studio with a loopback-only one.
-
-Limits:
-
-- Plain HTTP on a LAN address is not a browser "secure context", so saving or importing custom panel
-  layouts, some copy buttons and microphone recording do not work. To enable them on a client, add
-  `http://HOST:4747,http://HOST:4748` under `chrome://flags/#unsafely-treat-insecure-origin-as-secure`.
-- "Sign in to OpenFilm" does not complete from a remote browser; paste service API keys instead.
-- The key travels unencrypted, and the ports are also reachable from this machine's Docker networks.
-- To upgrade OpenFilm, bump the version in `tools/openfilm/package.json` and run `npm install`; the
-  patch script stops with an error naming what moved if the new version changed the patched lines.
+1. **Teleprompter repo** — which repository, and how it is controlled (HTTP, WebSocket, keys).
+2. **Camera USB project** — which project drives the T6i, and what it exposes.
+3. **How ChatGPT reaches the laptop** — Advanced Voice has to call the control shim somehow (a
+   connector the shim serves, or another route). This decides the shim's shape.
+4. **Mic recording** — which device and which recorder on the laptop.
+5. **Raw timeline format** — proposed: an OpenFilm `film.html`, since stage 2 opens it directly.
+6. **Media transfer** — proposed: `rsync` of the take folder to `edit/projects/` on the server.
+7. **Upload target** — where the finished video goes (YouTube or elsewhere) and with what account.

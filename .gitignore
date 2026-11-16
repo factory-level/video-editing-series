@@ -3,8 +3,11 @@ node_modules/
 *.mp4
 *.mov
 *.webm
-hf-demo/renders/
+renders/
 .hyperframes/
 .film/
 .DS_Store
 .thumbnails/
+# stage 1 media: large, copied to the server beside the repo, never committed
+direct/takes/
+*.wav

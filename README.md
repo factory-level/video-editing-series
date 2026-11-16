@@ -5,7 +5,7 @@ by coding agents.
 
 | Stage | Folder | Machine | What happens | Output |
 | --- | --- | --- | --- | --- |
-| 1. Direct + raw edit (live) | [`direct/`](direct/) | Laptop, at the camera | Record takes hands-free, then cut them into a clean raw narration | A take folder with a raw timeline |
+| 1. Direct + raw edit (live) | [`direct/`](direct/) | Linux laptop, at the camera | Record takes hands-free, then cut them into a clean raw narration | A take folder with a raw timeline |
 | 2. Effects edit + upload | [`edit/`](edit/) | Server | Green screen removal, b-roll, effects, review in a browser, render, upload | The finished video, published |
 
 Status: stage 2's editors are set up and working. Stage 1 and the handoff are designed here but not
@@ -26,7 +26,7 @@ shim does the work locally.
 ```
 you ── voice ──> ChatGPT ── tunnel ──> control shim (laptop) ──> teleprompter
                                                              ──> sound capture (studio mic)
-                                                             ──> camera: download the take's video
+                                                             ──> camera: record, download the video
                                                              ──> upload the take to the edit server
 ```
 
@@ -34,9 +34,11 @@ you ── voice ──> ChatGPT ── tunnel ──> control shim (laptop) ─
 
 - **Teleprompter** — its own git repo. Load a script, start, pause, scroll back to a line, change
   speed.
-- **Sound capture** — the studio microphone: start and stop recording with each take.
-- **Video download** — the Canon Rebel T6i over USB, through a USB camera-control project wrapped
-  by the shim: after a take, pull its video file off the camera onto the laptop.
+- **Sound capture** — the studio microphone: start and stop recording with each take. How it is
+  captured is not decided yet.
+- **Camera** — the Canon Rebel T6i over USB, through a Linux camera-control project wrapped by the
+  shim: start and stop recording, then pull the take's video file off the camera onto the laptop.
+  This makes the laptop a Linux machine.
 - **Upload to the edit server** — send the finished session to the server for stage 2.
 
 The tunnel carries only these short commands and their answers. Video and audio never pass through
@@ -109,11 +111,12 @@ edit/              stage 2, runs on the server
 These are not settled, and stage 1 cannot be built until they are:
 
 1. **Teleprompter repo** — which repository, and how it is controlled (HTTP, WebSocket, keys).
-2. **Camera USB project** — which project drives the T6i, and what it exposes.
+2. **Camera USB project** — a Linux project for controlling the T6i over USB; which one, and what
+   it exposes, is still to be named.
 3. **The tunnel** — decided in principle: ChatGPT reaches the shim through one tunnel. Still to
    choose and prove: which tunnel, how ChatGPT is connected to it, how the address is protected so
    only your ChatGPT can call it, and that voice mode can trigger those calls.
-4. **Sound capture** — which device and which recorder on the laptop.
+4. **Sound capture** — undecided: which device, and what records it on the Linux laptop.
 5. **Raw timeline format** — proposed: an OpenFilm `film.html`, since stage 2 opens it directly.
 6. **Media transfer** — proposed: `rsync` of the take folder to `edit/projects/` on the server.
 7. **Upload target** — where the finished video goes (YouTube or elsewhere) and with what account.

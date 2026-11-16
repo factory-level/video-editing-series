@@ -1,7 +1,7 @@
 # direct — stage 1 (laptop)
 
-Record takes hands-free, then cut them into raw narration. Runs on the laptop that the camera and
-microphone are plugged into. See the [top-level README](../README.md) for the whole pipeline.
+Record takes hands-free, then cut them into raw narration. Runs on the Linux laptop that the camera
+and microphone are plugged into. See the [top-level README](../README.md) for the whole pipeline.
 
 **Nothing here is built yet.** This file is the specification the code will follow.
 
@@ -12,8 +12,8 @@ microphone are plugged into. See the [top-level README](../README.md) for the wh
 | Tunnel | Gives the control shim one public HTTPS address so ChatGPT, in the cloud, can call it. Chosen for simplicity: nothing to install on the ChatGPT side, no router changes. | Which tunnel; how the address is protected |
 | Control shim | The one thing ChatGPT voice mode talks to, through the tunnel. Turns "roll", "cut", "back to line 12", "slower" into calls on the parts below. | The tunnel |
 | Teleprompter adapter | Load a script, start, pause, seek to a line, set speed; report the line on screen. | The teleprompter repo |
-| Video download | Pull each take's video file off the Canon T6i over USB onto the laptop. | The USB camera project |
-| Sound capture | Record the studio microphone for each take. | Device and recorder choice |
+| Camera | Start and stop recording on the Canon T6i over USB, then pull the take's video file onto the laptop. | A Linux USB camera-control project, still to be named |
+| Sound capture | Record the studio microphone for each take. | Undecided: device and recorder |
 | Upload | Send the session to the edit server. | Transfer method |
 | Raw-edit agents | Align scratch audio to studio audio, remove gaps and retakes, write the raw timeline. | Take folder below |
 
@@ -25,7 +25,7 @@ machine for ffmpeg, git, a Canon camera on USB and an audio input. The rest answ
 `load <script>` · `roll` · `cut` · `status` · `prompter start | pause | to <line> | speed <n>` ·
 `keep` / `discard` (the last take) · `handoff` (send the session to the server)
 
-`roll` starts sound capture and the teleprompter; `cut` stops them, downloads the take's video from
+`roll` starts the camera, sound capture and the teleprompter; `cut` stops them, downloads the take's video from
 the camera and closes the take. `handoff` uploads the session to the edit server.
 
 Only these commands and their short answers cross the tunnel. Media goes from the laptop straight to

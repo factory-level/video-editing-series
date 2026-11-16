@@ -1,0 +1,9 @@
+node_modules/
+# rendered output and tool caches (regenerate with the render commands)
+*.mp4
+*.mov
+*.webm
+hf-demo/renders/
+.hyperframes/
+.film/
+.DS_Store

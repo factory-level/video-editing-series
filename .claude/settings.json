@@ -1,0 +1,6 @@
+{
+  "env": {
+    "HYPERFRAMES_PREVIEW_HOST": "0.0.0.0",
+    "OPENFILM_NO_BROWSER": "1"
+  }
+}

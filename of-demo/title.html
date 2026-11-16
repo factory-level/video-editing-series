@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; background: #0d1117; overflow: hidden; }
+  h1 { position: absolute; inset: 0; margin: 0; display: grid; place-items: center;
+       font: 700 140px system-ui, sans-serif; color: #f0f6fc; letter-spacing: -2px; }
+  #bar { position: absolute; left: 0; bottom: 0; height: 12px; background: #58a6ff; }
+</style>
+<h1 id="title">OpenFilm works</h1>
+<div id="bar"></div>
+<script type="module">
+const title = document.getElementById('title'), bar = document.getElementById('bar');
+const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+window.film = {
+  duration: 4,
+  frame(t) {
+    const a = ease(t / 1.2);
+    title.style.opacity = a;
+    title.style.transform = `translateY(${(1 - a) * 60}px) scale(${0.96 + 0.04 * a})`;
+    bar.style.width = `${(t / 4) * 100}%`;
+  },
+};
+</script>

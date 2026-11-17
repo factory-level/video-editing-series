@@ -7,8 +7,8 @@
 set -eu
 here=$(dirname "$(readlink -f "$0")")
 run="$here/.run.json"
-# Per-machine settings, git-ignored: e.g. DIRECT_MIC=<PipeWire source> to record a mic that is not the default input.
-if [ -f "$here/local.env" ]; then set -a; . "$here/local.env"; set +a; fi
+# Per-machine settings from the git-ignored .env at the repository root (see .env.example).
+if [ -f "$here/../.env" ]; then set -a; . "$here/../.env"; set +a; fi
 node=$(command -v node || ls -1d "$HOME"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1)
 [ -x "$node" ] || { echo "node not found (needs Node 22 or newer)" >&2; exit 1; }
 

@@ -18,8 +18,8 @@ it also offers the tools of other MCP servers, such as the teleprompter's (see
 [ARCHITECTURE.md](../ARCHITECTURE.md)).
 
 **Microphone.** `studio.wav` is recorded from the default input unless `DIRECT_MIC` names a PipeWire
-source (`pactl list short sources`). Put it in a git-ignored `direct/local.env`, which
-`direct/launch` reads, to record a USB recorder while the computer keeps another microphone as its
+source (`pactl list short sources`). Put it in the git-ignored `.env` at the repository root
+(copy `.env.example`), which `direct/launch` reads, to record a USB recorder while the computer keeps another microphone as its
 default, for example for a voice call:
 
 ```

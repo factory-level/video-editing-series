@@ -12,6 +12,55 @@ Status: stage 2's editors are set up and working. Stage 1 records takes on the l
 and teleprompter together. The upload, the callback and
 the raw edit are designed here but not built; see [Open decisions](#open-decisions).
 
+## How it fits together
+
+```mermaid
+flowchart TB
+    voice["ChatGPT Advanced Voice<br/>(the director)"]
+    cp["OpenAI tunnel control plane"]
+
+    subgraph laptop["Laptop, at the camera"]
+        tc["tunnel-client"]
+        mcp["direct/ctl mcp<br/>MCP server"]
+        shim["Control shim<br/>direct/shim.mjs"]
+        cam["Canon Rebel T6i<br/>gphoto2 over USB"]
+        mic["Microphone<br/>pw-record"]
+        tp["Teleprompter<br/>WebSocket"]
+        take[("Take folder<br/>camera.mp4 + studio.wav + script")]
+    end
+
+    subgraph server["Server"]
+        media[("Take folders")]
+        rig["OpenRig daemon"]
+        agents["Raw-edit agents"]
+        align["Align waveforms:<br/>camera scratch audio vs studio audio"]
+        cut["Pick kept ranges:<br/>jump cuts, with padding"]
+        timeline[("Raw timeline<br/>HyperFrames composition")]
+        stage2["Stage 2: effects edit,<br/>review on the LAN, render, upload"]
+    end
+
+    voice -->|"tool call: roll, cut, keep"| cp
+    cp -->|"outbound tunnel"| tc
+    tc -->|"stdio"| mcp
+    mcp -->|"HTTP on loopback"| shim
+    shim --> cam
+    shim --> mic
+    shim --> tp
+    cam --> take
+    mic --> take
+    take -.->|"first: rsync, checksums confirmed"| media
+    shim -.->|"then: callback, rig queue create"| rig
+    rig -.-> agents
+    media -.-> agents
+    agents -.-> align
+    align -.-> cut
+    cut -.->|"append the take"| timeline
+    timeline -.-> stage2
+```
+
+Solid lines are built; dashed lines are designed and not built yet. Each link is described in
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Commands
 
 One command per mode, from the repo root. Arguments go after `--`.
@@ -86,6 +135,7 @@ limits.
 ## Layout
 
 ```
+ARCHITECTURE.md    how the voice director, the laptop and the server connect
 package.json       the video:direct, video:raw-edit and video:edit commands
 direct/            stage 1, runs on the laptop
   launch           check the laptop, start or stop a session
@@ -109,16 +159,16 @@ These are not settled, and stage 1 cannot be built until they are:
    the line on screen, so `prompter to <line>` is not available.
 2. **Camera USB project** — settled: [gphoto2](https://github.com/gphoto/gphoto2). It starts and
    stops movie recording to the card on the T6i and downloads the clip; see `direct/README.md`.
-3. **How ChatGPT reaches the laptop** — the shim is an MCP server (`direct/ctl mcp`). Still to do:
-   an OpenAI tunnel profile that runs it, like the one already serving the teleprompter.
+3. **How ChatGPT reaches the laptop** — the shim is an MCP server (`direct/ctl mcp`) behind an OpenAI
+   tunnel; the profile is `direct/tunnel.example.yaml`. Not tried with Advanced Voice yet.
 4. **Mic recording** — recorder settled: `pw-record`, on the default source or `DIRECT_MIC`. Which
    device is the studio microphone is still open.
 5. **Raw timeline format** — a HyperFrames (HeyGen) composition, extended one take at a time. Still
    open: how the composition is laid out so appending a take does not disturb earlier human edits.
 6. **Media transfer** — proposed: `rsync` of each take folder to `edit/projects/` on the server,
    confirmed by checksum before the callback.
-7. **OpenRig callback** — which rig on the server receives it, how the laptop reaches it, and what
-   the message carries (session, take, path).
+7. **OpenRig callback** — mechanism proposed: `rig queue create --host` from the laptop (see
+   [ARCHITECTURE.md](ARCHITECTURE.md)). Open: which rig and seat receive it, and the server's address.
 8. **Padding** — how much to leave around each kept range, and when a clean jump cut is used
    instead.
 9. **Upload target** — where the finished video goes (YouTube or elsewhere) and with what account.

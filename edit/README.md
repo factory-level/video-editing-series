@@ -24,7 +24,9 @@ repository root naming where, on a disk with room for video:
 CONTENT_ROOT=/path/to/content
 ```
 
-Each video's media goes in `$CONTENT_ROOT/<video-slug>/`.
+Each video is one folder, `$CONTENT_ROOT/<nnnn-video-slug>/`, with `raw/` (uploads) and `edit/`
+(scenes and the final video) inside. The full tree is in
+[`first-edit/README.md`](../first-edit/README.md#where-files-go).
 
 **OpenRig.** The agent team that makes the first edit runs under
 [OpenRig](https://github.com/mvschwarz/openrig) (needs tmux and a signed-in Claude Code):

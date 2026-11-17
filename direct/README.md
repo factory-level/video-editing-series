@@ -105,5 +105,5 @@ effects, keying or b-roll happen at this stage.
 
 Handoff is per take. `cut` followed by `keep` uploads the take folder, confirms it, and sends the
 callback. The take goes into the server's content folder for the video,
-`<content root>/<video-slug>/`. `handoff` is what is left for the end of the session: check that
+`<content root>/<nnnn-video-slug>/raw/<nn>/` (one numbered folder per take). `handoff` is what is left for the end of the session: check that
 every kept take is uploaded and on the timeline, and report anything missing. None of this is built.

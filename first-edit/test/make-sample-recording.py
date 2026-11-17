@@ -2,11 +2,11 @@
 # requires-python = ">=3.10"
 # dependencies = ["piper-tts>=1.3", "numpy>=1.26"]
 # ///
-"""Make a stand-in take for trying first-edit without a camera: synthetic speech with a false
+"""Make a stand-in recording for trying first-edit without a camera: synthetic speech with a false
 start, a retake and an unscripted remark, a camera clip whose scratch audio starts at a different
 moment and is noisy, and the script.
 
-    uv run first-edit/test/make-sample-take.py <take folder> [--cues]
+    uv run first-edit/test/make-sample-recording.py <video folder>/raw/<nn> [--cues]
 
 With --cues the speaker directs the cut aloud instead: three scenes closed by "cut cut", the first
 with three clips and a "best best" (see first-edit/glossary.json).
@@ -122,7 +122,7 @@ def main() -> None:
         ], check=True)
     (take / "script.md").write_text("# Sample take\n\n" + "\n".join(script) + "\n", encoding="utf-8")
     print(f"{take}: camera.mp4 ({seconds:.1f} s), studio.wav ({len(studio) / RATE:.1f} s), script.md")
-    expected = "3 scenes (a, b, c) with 3, 1 and 2 clips; a3 called best" if cues else "8 clips in 6 scenes"
+    expected = "3 scenes with 3, 1 and 2 clips; the first scene's third clip called best" if cues else "8 clips in 6 scenes"
     print(f"expected: studio = camera {-CAMERA_LEAD:+.3f} s; {expected}")
 
 

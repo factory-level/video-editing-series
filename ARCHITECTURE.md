@@ -10,9 +10,9 @@ The wiring between the voice director, the laptop and the server. The overview d
 | ChatGPT voice to MCP server, through the OpenAI tunnel | Profile written, not tried |
 | Take upload to the server | Not built |
 | Callback to OpenRig on the server | Not built; commands below are checked against `rig` 0.6.10 help only |
-| `first-edit/launch`: waveform alignment, transcription, scenes and clips | Built; tested on a generated sample take only |
-| `first-edit/assemble`: best clips onto the HyperFrames raw timeline | Built; tested on the same sample take |
-| OpenRig team `first-edit` (cutter, assembler) | Spec written and validated; not launched yet |
+| `first-edit/launch`: waveform alignment, transcription, scenes and clips | Built; tested on generated sample recordings only |
+| `first-edit/assemble`: best clips onto the HyperFrames raw timeline | Built; tested on the same samples |
+| OpenRig team `first-edit` (cutter, assembler) | Built; ran a sample recording from queue item to open timeline unattended |
 
 ## One take, end to end
 
@@ -106,7 +106,8 @@ rig queue create --host edit-server \
   script, and whether the take is kept.
 - `rig queue create` is the one queue command that accepts `--host`; `rig stream emit` does not.
 
-Takes land in `<content root>/<video-slug>/` on the server; the content root is in that machine's
+Each recording lands in `<content root>/<nnnn-video-slug>/raw/<nn>/` on the server
+(the laptop calls a recording a take; the full tree is in [`first-edit/README.md`](first-edit/README.md#where-files-go)); the content root is in that machine's
 git-ignored `PATH.md`. Still to decide: which rig and seat receive the item, and the server's
 address and token.
 
@@ -128,7 +129,7 @@ moments (about a quarter of a second apart in tests, up to 9 seconds on the firs
 4. From here on the picture comes from `camera.mp4`, the sound from `studio.wav` shifted by the
    offset. The scratch audio is not used again.
 
-**Scenes and clips.** Cut the take into scenes, each holding its clips. A clip is a candidate: one
+**Scenes and clips.** Cut the recording into scenes, each holding its clips. A clip is a candidate: one
 try at saying the scene. Every clip is kept.
 
 1. Transcribe `studio.wav` with word timings.
@@ -138,7 +139,7 @@ try at saying the scene. Every clip is kept.
    begins the scene again. Without them, each sentence of `script.md` is a scene and its retakes
    are its clips.
 4. Cut every clip tight to its speech, picture from the camera and sound from the studio, into
-   `scenes/<letter>-<words>/<letter><n>[-best].mp4`, and write `scenes.json`.
+   `edit/scenes/<nn>-<words>/<nn>-<nn>[-best].mp4`, and update `edit/scenes/scenes.json`.
 
 **Append.** `first-edit/assemble` adds the best clip of each scene to the session's raw timeline, a
 HyperFrames composition, after the takes already there. The timeline trails the filming by one

@@ -1,9 +1,17 @@
 version: "0.2"
 name: first-edit
 summary: >
-  Turns an uploaded take into the raw timeline. The cutter syncs camera and studio sound and cuts the
-  take into scenes, each holding its clips (candidates); the assembler puts the best clip of each
-  scene on the HyperFrames timeline. One queue item is one take. See first-edit/README.md.
+  Automated first edit. One queue item is one uploaded recording. The cutter syncs camera and studio
+  sound and cuts the recording into numbered scenes, each holding its clips (candidates); the
+  assembler puts the best clip of each scene on the HyperFrames raw timeline. See first-edit/README.md.
+
+# This repository tracks CLAUDE.md, so OpenRig's managed guidance goes in the git-ignored local file.
+managed_blocks:
+  claude-code: CLAUDE.local.md
+
+# Unattended: Claude's auto mode decides each action instead of stopping to ask a person. The rules
+# below let the commands this team exists to run go through without a decision at all.
+permission_policy: builtin:auto
 
 pods:
   - id: edit
@@ -15,12 +23,16 @@ pods:
         runtime: claude-code
         profile: default
         cwd: "../.."
+        claude_permissions:
+          allow: ["Bash(first-edit/launch *)", "Bash(rig queue *)", "Bash(rig whoami *)"]
       - id: assemble
         label: Assembler
         agent_ref: "local:agents/assembler"
         runtime: claude-code
         profile: default
         cwd: "../.."
+        claude_permissions:
+          allow: ["Bash(first-edit/assemble *)", "Bash(bin/edit *)", "Bash(npx -y hyperframes@0.9.58 *)", "Bash(rig queue *)", "Bash(rig whoami *)"]
     edges:
       - kind: delegates_to
         from: cut

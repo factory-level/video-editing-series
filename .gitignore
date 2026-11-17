@@ -15,5 +15,7 @@ direct/takes/
 # stage 1 runtime state
 direct/.run.json
 direct/.*.log
+# the generated sample project (first-edit/README.md)
+edit/projects/sample-video/
 # this machine's content path (see README, Handoff)
 PATH.md

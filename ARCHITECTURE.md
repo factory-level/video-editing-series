@@ -10,7 +10,9 @@ The wiring between the voice director, the laptop and the server. The overview d
 | ChatGPT voice to MCP server, through the OpenAI tunnel | Profile written, not tried |
 | Take upload to the server | Not built |
 | Callback to OpenRig on the server | Not built; commands below are checked against `rig` 0.6.10 help only |
-| `video:first-edit`: waveform alignment, jump cuts, raw timeline | Not built; the command is a stub |
+| `first-edit/launch`: waveform alignment, transcription, pieces sorted by idea | Built; tested on a generated sample take only |
+| `first-edit/assemble`: pieces onto the HyperFrames raw timeline | Built; tested on the same sample take |
+| OpenRig team `first-edit` (cutter, assembler) | Spec written and validated; not launched yet |
 
 ## One take, end to end
 

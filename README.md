@@ -72,7 +72,7 @@ the same things without npm: `bin/direct start <session>`, `bin/direct roll`, `b
 | Command | Machine | What it does |
 | --- | --- | --- |
 | `npm run video:direct` | Laptop | Check the laptop; with `-- <session>`, start the teleprompter and the control shim |
-| `npm run video:first-edit` | Server | Waveform-align each uploaded take, cut it per jump cut, append it to the raw timeline (not built yet) |
+| `npm run video:first-edit` | Server | Align each uploaded take, cut every reading into its own piece, sort the pieces by idea; `first-edit/assemble` then puts them on the raw timeline. Built, tested on a sample take only; see [`first-edit/README.md`](first-edit/README.md) |
 | `npm run video:edit` | Server | List projects; with `-- <project>`, open its editor on the LAN |
 
 ## Stage 1: direct + first edit (laptop, cut on the server)
@@ -100,10 +100,12 @@ audio**, and the microphone's **studio audio**.
    director orchestrates the cut; nobody starts it by hand.
 3. The rig's editor agents align the scratch audio to the studio audio, so the studio track replaces
    the camera's sound in sync.
-4. They pick the kept ranges: silences, false starts and retakes go, checked against the
-   teleprompter script.
-5. They append the take to the session's **raw timeline**, either as a clean jump cut or with a
-   little padding left on each side, so a person can trim it further.
+4. They cut every reading into its own piece and sort the pieces by idea, checked against the
+   teleprompter script. Nothing is thrown away: a line's retakes and false starts sit in one
+   lettered folder with it, and one reading of each idea is marked as suggested.
+5. They append the take to the session's **raw timeline**, one clip per idea using the suggested
+   reading, with a little padding left on each side so a person can trim it or swap in another
+   reading.
 
 The raw timeline is a HyperFrames (HeyGen) composition. It trails the live filming by the time one
 take needs to upload and be cut, and catches up take by take. By the end of the session the whole
@@ -152,7 +154,7 @@ direct/            stage 1, runs on the laptop
   launch           check the laptop, start or stop a session
   ctl              roll, cut, status and the other commands
   shim.mjs         the control shim behind both, and its MCP server for ChatGPT
-first-edit/        the cut between the stages, runs on the server (not built yet)
+first-edit/        the cut between the stages, runs on the server; rig/ is its agent team
 edit/              stage 2, runs on the server
   launch           open a project's editor on the LAN
   projects/        one folder per video (of-demo and hf-demo are working samples)

@@ -13,8 +13,20 @@ direct/launch --stop          # stop the shim; a rolling take is cut first
 ```
 
 `npm run video:direct -- <session>` from the repo root is the same as `direct/launch <session>`.
-`direct/ctl mcp` serves the same commands to ChatGPT as an MCP server. Set `DIRECT_MIC` to a PipeWire
-source to record something other than the default microphone.
+`direct/ctl mcp` serves the same commands to ChatGPT as an MCP server; with `DIRECT_MCP_STITCH` set
+it also offers the tools of other MCP servers, such as the teleprompter's (see
+[ARCHITECTURE.md](../ARCHITECTURE.md)).
+
+**Microphone.** `studio.wav` is recorded from the default input unless `DIRECT_MIC` names a PipeWire
+source (`pactl list short sources`). Put it in a git-ignored `direct/local.env`, which
+`direct/launch` reads, to record a USB recorder while the computer keeps another microphone as its
+default, for example for a voice call:
+
+```
+DIRECT_MIC=alsa_input.usb-ZOOM_Corporation_F1_000000000000-00.analog-stereo
+```
+
+Several programs can record one source at once.
 
 **What works:** the shim, the camera (T6i, 1080p clips recorded to the card and pulled into the take
 folder), the microphone, the teleprompter. **Not built:** upload, callback, `handoff`, and

@@ -67,6 +67,11 @@ control shim                         direct/shim.mjs serve <session>
 - **Tools offered:** `status`, `roll`, `cut`, `keep`, `discard`, `load_script {text}`,
   `prompter {action}`. Each returns one line of text for the director to say or act on. `roll`
   answers `camera recording` only after the camera confirms it.
+- **Stitching:** set `DIRECT_MCP_STITCH` to other stdio MCP servers (commands separated by `;`) in
+  the environment tunnel-client starts from. `direct/ctl mcp` starts them, adds their tools to its
+  own list and forwards calls, so ChatGPT sees one suite behind one tunnel. With the teleprompter's
+  server stitched in, that is 14 tools: the shim's 7 plus `read_script`, `write_script` and its file
+  tools. Where names clash the shim's tool wins.
 - **Profile:** [`direct/tunnel.example.yaml`](direct/tunnel.example.yaml). The tunnel id comes from
   https://platform.openai.com/settings/organization/tunnels; the key is read from
   `CONTROL_PLANE_API_KEY` and never written into the profile.

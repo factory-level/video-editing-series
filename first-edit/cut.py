@@ -378,9 +378,18 @@ def script_part(clip: dict, script: list[str]) -> tuple[int, int, int, int] | No
     """Where a clip reads the script: the script words it covers (from, to) and the clip's own
     words that do so (first, last), or None when it is not a reading of the script."""
     reading = clip["tokens"]
-    blocks = [b for b in difflib.SequenceMatcher(None, script, reading, autojunk=False).get_matching_blocks() if b.size >= 2]
+    every = [b for b in difflib.SequenceMatcher(None, script, reading, autojunk=False).get_matching_blocks() if b.size]
+    blocks = [b for b in every if b.size >= 2]
     if sum(b.size for b in blocks) < max(3, 0.3 * min(len(reading), len(script))):
         return None
+    # a single matching word counts only when it sits right beside the run, as the last word of
+    # "just me and an AI" does when the speaker drops the "an"
+    for b in [x for x in every if x.size == 1 and x.a > blocks[-1].a]:
+        if b.a - (blocks[-1].a + blocks[-1].size) <= 2 and b.b - (blocks[-1].b + blocks[-1].size) <= 2:
+            blocks.append(b)
+    for b in reversed([x for x in every if x.size == 1 and x.a < blocks[0].a]):
+        if blocks[0].a - (b.a + 1) <= 2 and blocks[0].b - (b.b + 1) <= 2:
+            blocks.insert(0, b)
     owner = [index for index, word in enumerate(clip["words"]) for _ in tokens(word["text"])]   # token -> word
     return blocks[0].a, blocks[-1].a + blocks[-1].size, owner[blocks[0].b], owner[blocks[-1].b + blocks[-1].size - 1]
 

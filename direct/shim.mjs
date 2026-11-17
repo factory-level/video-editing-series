@@ -328,9 +328,40 @@ const TOOLS = [
   { name: "load_script", description: "Put a script on the teleprompter, replacing what is there.", inputSchema: { type: "object", properties: { text: { type: "string", description: "The full script text." } }, required: ["text"] } },
   { name: "prompter", description: "Control the teleprompter.", inputSchema: { type: "object", properties: { action: { type: "string", enum: ["start", "pause", "faster", "slower", "reset"] } }, required: ["action"] } },
 ];
+// Stitching: DIRECT_MCP_STITCH names other stdio MCP servers (commands separated by ";"). Their tools
+// are offered beside the shim's own, so ChatGPT sees one suite behind one tunnel.
+function stitch(command) {
+  const child = spawn(command, { shell: true, stdio: ["pipe", "pipe", "inherit"] });
+  const pending = new Map();
+  let next = 0;
+  child.stdin.on("error", () => {});
+  readline.createInterface({ input: child.stdout }).on("line", (line) => {
+    let msg;
+    try { msg = JSON.parse(line); } catch { return; }
+    const done = pending.get(msg.id);
+    if (done) { pending.delete(msg.id); done(msg); }
+  });
+  const call = (method, params) => new Promise((resolve) => {
+    const id = ++next;
+    pending.set(id, resolve);
+    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+    setTimeout(() => { if (pending.delete(id)) resolve({ error: { code: -32000, message: `${command} did not answer` } }); }, 15000);
+  });
+  const tools = (async () => {
+    await call("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "direct-shim", version: "0.1.0" } });
+    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
+    return (await call("tools/list", {})).result?.tools || [];
+  })();
+  return { call, tools, child };
+}
 function mcp() {
-  const reply = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n");
-  readline.createInterface({ input: process.stdin }).on("line", async (line) => {
+  const send_ = (obj) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...obj }) + "\n");
+  const reply = (id, result) => send_({ id, result });
+  const others = (process.env.DIRECT_MCP_STITCH || "").split(";").map((c) => c.trim()).filter(Boolean).map(stitch);
+  const own = new Set(TOOLS.map((t) => t.name));
+  const input = readline.createInterface({ input: process.stdin });
+  input.on("close", () => { for (const o of others) o.child.kill(); process.exit(0); });
+  input.on("line", async (line) => {
     let msg;
     try { msg = JSON.parse(line); } catch { return; }
     if (msg.id === undefined) return; // a notification
@@ -339,16 +370,24 @@ function mcp() {
     } else if (msg.method === "ping") {
       reply(msg.id, {});
     } else if (msg.method === "tools/list") {
-      reply(msg.id, { tools: TOOLS });
+      const extra = (await Promise.all(others.map((o) => o.tools))).flat().filter((t) => !own.has(t.name));
+      reply(msg.id, { tools: [...TOOLS, ...extra] });
     } else if (msg.method === "tools/call") {
       const { name, arguments: a = {} } = msg.params || {};
+      if (!own.has(name)) {
+        for (const o of others) {
+          if (!(await o.tools).some((t) => t.name === name)) continue;
+          const r = await o.call("tools/call", msg.params);
+          return send_(r.error ? { id: msg.id, error: r.error } : { id: msg.id, result: r.result });
+        }
+        return reply(msg.id, { content: [{ type: "text", text: `unknown tool: ${name}` }], isError: true });
+      }
       const r = name === "load_script" ? await send("load", [], { text: a.text })
         : name === "prompter" ? await send("prompter", [a.action])
-        : TOOLS.some((t) => t.name === name) ? await send(name)
-        : { ok: false, text: `unknown tool: ${name}` };
+        : await send(name);
       reply(msg.id, { content: [{ type: "text", text: r.text }], isError: !r.ok });
     } else {
-      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: `method not found: ${msg.method}` } }) + "\n");
+      send_({ id: msg.id, error: { code: -32601, message: `method not found: ${msg.method}` } });
     }
   });
 }

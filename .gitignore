@@ -26,3 +26,5 @@ PATH.md
 .openrig/
 .mcp.json
 CLAUDE.local.md
+# this laptop's stage 1 settings, e.g. which microphone to record
+direct/local.env

@@ -92,9 +92,11 @@ def mono(path: Path, rate: int):
 
 # ---------------------------------------------------------------- alignment
 
-def correlate(a, b, max_lag: int):
+def correlate(a, b, max_lag: int, guard: int):
     """Where `a` best lines up inside `b`: the lag k (in samples, -max_lag..max_lag) that maximises
-    sum a[n] * b[n + k], and how far that peak stands above the rest, in standard deviations."""
+    sum a[n] * b[n + k], with two measures of how much to trust it. `clear` is the peak against the
+    best lag anywhere else (more than `guard` samples away): noise gives about 1, a real match 2 or
+    more. `alike` is the peak as a correlation, 0 to 1: how alike the two are once lined up."""
     import numpy as np
     a = a - a.mean()
     b = b - b.mean()
@@ -103,8 +105,12 @@ def correlate(a, b, max_lag: int):
     max_lag = min(max_lag, size // 2 - 1)
     window = np.concatenate([c[-max_lag:], c[: max_lag + 1]])     # lags -max_lag .. +max_lag
     peak = int(np.argmax(window))
-    spread = float(window.std()) or 1.0
-    return peak - max_lag, float((window[peak] - window.mean()) / spread)
+    elsewhere = window.copy()
+    elsewhere[max(0, peak - guard):peak + guard + 1] = -np.inf
+    second = float(elsewhere.max()) if np.isfinite(elsewhere).any() else 0.0
+    clear = float(window[peak] / second) if second > 0 else 99.0
+    scale = float(np.linalg.norm(a) * np.linalg.norm(b)) or 1.0
+    return peak - max_lag, min(clear, 99.0), float(window[peak] / scale)
 
 
 def envelope(x):
@@ -114,31 +120,39 @@ def envelope(x):
     return np.log1p(1000.0 * np.sqrt((frames ** 2).mean(axis=1)))
 
 
+PER_SECOND = ALIGN_RATE // ENVELOPE_HOP   # envelope frames in a second
+
+
 def offset_between(scratch, studio, max_seconds: float):
-    """Seconds to add to a camera time to get the studio time of the same moment, and a score.
-    Loudness envelopes find it to 10 ms whatever the microphones did to the waveform; the waveforms
-    then refine it when they agree."""
-    lag, score = correlate(envelope(scratch), envelope(studio), int(max_seconds * ALIGN_RATE / ENVELOPE_HOP))
+    """Seconds to add to a camera time to get the studio time of the same moment, and how clear
+    and how alike the match is. Loudness envelopes find it to 10 ms whatever the microphones did to
+    the waveform; the waveforms then refine it when they agree."""
+    lag, clear, alike = correlate(envelope(scratch), envelope(studio), int(max_seconds * PER_SECOND), PER_SECOND // 2)
     coarse = lag * ENVELOPE_HOP
     reach = 2 * ENVELOPE_HOP
     span = min(len(scratch), ALIGN_RATE * 120)
-    start = max(0, min(len(scratch) - span, (len(scratch) - span) // 2))
-    a = scratch[start:start + span]
+    start = max(0, (len(scratch) - span) // 2)
     lo = start + coarse - reach
     if lo >= 0 and lo + span + 2 * reach <= len(studio):
-        fine, fine_score = correlate(a, studio[lo:lo + span + 2 * reach], 2 * reach)
-        # `a` sits `reach` samples into that window when the coarse answer is exact
-        if fine_score > 8:
-            return (coarse + fine - reach) / ALIGN_RATE, score
-    return coarse / ALIGN_RATE, score
+        fine, fine_clear, fine_alike = correlate(scratch[start:start + span], studio[lo:lo + span + 2 * reach], 2 * reach, 8)
+        # the stretch sits `reach` samples into that window when the coarse answer is exact
+        if fine_alike >= 0.3 and abs(fine - reach) <= ENVELOPE_HOP:
+            return (coarse + fine - reach) / ALIGN_RATE, clear, alike
+    return coarse / ALIGN_RATE, clear, alike
+
+
+def trusted(clear: float, alike: float) -> bool:
+    """A match counts when it stands well above every other lag and the two recordings are alike
+    once lined up. Silence or noise gives clear about 1.1 and alike under 0.15."""
+    return clear >= 1.5 and alike >= 0.25
 
 
 def align(camera: Path, studio: Path, max_seconds: float) -> dict:
     scratch_audio, studio_audio = mono(camera, ALIGN_RATE), mono(studio, ALIGN_RATE)
     if len(scratch_audio) < ALIGN_RATE or len(studio_audio) < ALIGN_RATE:
         fail("the camera clip or studio.wav has under a second of sound; cannot align them")
-    offset, score = offset_between(scratch_audio, studio_audio, max_seconds)
-    result = {"offset": round(offset, 3), "score": round(score, 1), "drift": None, "ok": score >= 6}
+    offset, clear, alike = offset_between(scratch_audio, studio_audio, max_seconds)
+    result = {"offset": round(offset, 3), "clear": round(clear, 2), "alike": round(alike, 2), "drift": None, "ok": trusted(clear, alike)}
     # the same answer near the start and near the end rules out drift between the two recorders
     third = len(scratch_audio) // 3
     if third >= ALIGN_RATE * 10:
@@ -148,9 +162,9 @@ def align(camera: Path, studio: Path, max_seconds: float) -> dict:
             lo, hi = begin + shift - ALIGN_RATE * 2, begin + shift + third + ALIGN_RATE * 2
             if lo < 0 or hi > len(studio_audio):
                 continue
-            lag, part_score = correlate(envelope(scratch_audio[begin:begin + third]), envelope(studio_audio[lo:hi]), ALIGN_RATE * 4 // ENVELOPE_HOP)
-            if part_score >= 6:
-                ends.append(lag * ENVELOPE_HOP / ALIGN_RATE - 2.0)
+            lag, part_clear, part_alike = correlate(envelope(scratch_audio[begin:begin + third]), envelope(studio_audio[lo:hi]), 4 * PER_SECOND, PER_SECOND // 2)
+            if trusted(part_clear, part_alike):
+                ends.append(lag / PER_SECOND - 2.0)
         if len(ends) == 2:
             result["drift"] = round(ends[1] - ends[0], 3)
             result["ok"] = result["ok"] and abs(result["drift"]) <= 0.045
@@ -199,8 +213,8 @@ def load_glossary(path: Path) -> list[dict]:
         fail(f"cannot read the glossary {path}: {error}")
     phrases = []
     for cue in cues:
-        if cue.get("action") not in ("cut", "best"):
-            fail(f"glossary: \"{cue.get('say')}\" has action \"{cue.get('action')}\"; this version knows cut and best")
+        if cue.get("action") not in ("cut", "best", "end"):
+            fail(f"glossary: \"{cue.get('say')}\" has action \"{cue.get('action')}\"; this version knows cut, best and end")
         for said in [cue["say"], *cue.get("heard_as", [])]:
             phrases.append({"tokens": tokens(said), "action": cue["action"], "say": cue["say"]})
     return sorted(phrases, key=lambda p: -len(p["tokens"]))   # the longest way of saying it first
@@ -216,6 +230,8 @@ def take_out_cues(words: list[dict], phrases: list[dict]) -> tuple[list[dict], l
     while at < len(flat):
         for phrase in phrases:
             size = len(phrase["tokens"])
+            if phrase["action"] == "end" and at + size != len(flat):
+                continue   # an end cue only counts as the last thing said in the recording
             if [t for t, _ in flat[at:at + size]] == phrase["tokens"]:
                 covered = sorted({index for _, index in flat[at:at + size]})
                 cues.append({"say": phrase["say"], "action": phrase["action"],
@@ -284,7 +300,7 @@ def place_in_script(reading: list[str], script: list[str]) -> tuple[int, int] | 
     reach = len(reading) + 4
     near = [b for b in blocks if abs(b.a - anchor.a) <= reach and (b.size >= 2 or len(reading) <= 3)] or [anchor]
     matched = sum(b.size for b in near)
-    if matched / len(reading) < 0.6 or (matched < 2 and len(reading) > 2):
+    if matched / len(reading) < 0.6 or matched < 2:   # one word in common is not a reading of the script
         return None
     return min(b.a for b in near), max(b.a + b.size for b in near)
 
@@ -528,16 +544,16 @@ def main() -> None:
     script_file = take / "script.md"
     ideas = script_ideas(script_file) if script_file.exists() else None
 
-    alignment = {"offset": 0.0, "score": None, "drift": None, "ok": True}
+    alignment = {"offset": 0.0, "clear": None, "alike": None, "drift": None, "ok": True}
     if camera and studio != camera:
         if not has_stream(camera, "a"):
             fail(f"{camera.name} has no sound to align with studio.wav")
         print(f"aligning {camera.name} to {studio.name}…", flush=True)
         alignment = align(camera, studio, args.max_offset)
         drift = "" if alignment["drift"] is None else f", drift {alignment['drift']:+.3f} s"
-        print(f"  studio = camera {alignment['offset']:+.3f} s (score {alignment['score']}{drift})")
+        print(f"  studio = camera {alignment['offset']:+.3f} s (clear {alignment['clear']}, alike {alignment['alike']}{drift})")
         if not alignment["ok"] and not args.force:
-            fail("the two recordings do not line up clearly (low score, or the offset moves through the take). "
+            fail("the two recordings do not line up clearly (needs clear >= 1.5 and alike >= 0.25, and no drift). "
                  "Nothing was cut; a person should look, or pass --force.")
 
     print(f"transcribing {studio.name}…", flush=True)

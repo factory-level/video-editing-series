@@ -8,9 +8,10 @@ by coding agents.
 | 1. Direct + first edit (live) | [`direct/`](direct/) | Laptop, at the camera; the cut runs on the server | Record takes hands-free; each take is uploaded and cut into the raw narration as you film | A raw timeline that grows take by take |
 | 2. Effects edit + upload | [`edit/`](edit/) | Server | Green screen removal, b-roll, effects, review in a browser, render, upload | The finished video, published |
 
-Status: stage 2's editors are set up and working. Stage 1 records takes on the laptop: camera, microphone
-and teleprompter together. The upload, the callback and
-the first edit are designed here but not built; see [Open decisions](#open-decisions).
+> **In development.** Everything here is being built in the open and will change. Today stage 2's
+> editors are set up and working, and stage 1 records takes on the laptop: camera, microphone and
+> teleprompter together. The upload, the callback and the first edit are designed but not built. See
+> [Open decisions](#open-decisions).
 
 ## How it fits together
 
@@ -65,7 +66,8 @@ Solid lines are built; dashed lines are designed and not built yet. Each link is
 
 ## Commands
 
-One command per mode, from the repo root. Arguments go after `--`.
+One command per mode, from the repo root. Arguments go after `--`. `bin/direct` and `bin/edit` are
+the same things without npm: `bin/direct start <session>`, `bin/direct roll`, `bin/edit <project>`.
 
 | Command | Machine | What it does |
 | --- | --- | --- |
@@ -115,6 +117,10 @@ Handoff is per take, not per session. A take travels as one folder: the camera f
 audio, the script and the teleprompter log. The media is large and is copied, not committed. The raw
 timeline is small text, is written on the server and lives in git.
 
+On the server the media lands on a large disk outside this repository, at
+`<content root>/<video-slug>/`. The content root is specific to each machine, so it is written in a
+`PATH.md` at the repository root that is git-ignored and never published.
+
 ## Stage 2: effects edit + upload (server)
 
 The server takes the raw timeline as its starting point and a second team of agents finishes it:
@@ -138,6 +144,9 @@ limits.
 
 ```
 ARCHITECTURE.md    how the voice director, the laptop and the server connect
+PATH.md            this machine's content root (git-ignored, you create it)
+bin/direct         stage 1 command (wraps direct/launch and direct/ctl)
+bin/edit           stage 2 command (wraps edit/launch)
 package.json       the video:direct, video:first-edit and video:edit commands
 direct/            stage 1, runs on the laptop
   launch           check the laptop, start or stop a session
@@ -167,8 +176,8 @@ These are not settled, and stage 1 cannot be built until they are:
    device is the studio microphone is still open.
 5. **Raw timeline format** — a HyperFrames (HeyGen) composition, extended one take at a time. Still
    open: how the composition is laid out so appending a take does not disturb earlier human edits.
-6. **Media transfer** — proposed: `rsync` of each take folder to `edit/projects/` on the server,
-   confirmed by checksum before the callback.
+6. **Media transfer** — the destination is decided: `<content root>/<video-slug>/` on the server.
+   Proposed for the copy: `rsync` of each take folder, confirmed by checksum before the callback.
 7. **OpenRig callback** — mechanism proposed: `rig queue create --host` from the laptop (see
    [ARCHITECTURE.md](ARCHITECTURE.md)). Open: which rig and seat receive it, and the server's address.
 8. **Padding** — how much to leave around each kept range, and when a clean jump cut is used

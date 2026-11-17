@@ -28,6 +28,32 @@ the desktop, which otherwise holds the USB connection. Clips are removed from th
 downloaded. Wait about ten seconds after `direct/launch` before the first `roll`, or the camera
 starts that take late.
 
+## Teleprompter
+
+[Abhishekingle662/teleprompter](https://github.com/Abhishekingle662/teleprompter) v0.3.0 (MIT), a
+Tauri desktop app, built from source because the release has no downloads. The shim controls it two
+ways:
+
+- **Script** — the app watches `scripts/current.txt` in its data folder
+  (`~/.local/share/com.teleprompter.app/` on Linux) and reloads the text on screen when the file
+  changes. `load` writes the script there; `DIRECT_PROMPTER_SCRIPT` overrides the path.
+- **Playback** — the app runs a WebSocket server and accepts `{"action": "<name>"}` with `play`,
+  `pause`, `toggle`, `faster`, `slower` (10 words per minute a step) and `reset` (back to the top).
+
+What that means here:
+
+- **No jumping to a line.** Over the WebSocket the only move is back to the top.
+- **No position readout.** `prompter.jsonl` records what the shim sent and when, not what was
+  showing.
+- **The WebSocket port changes** at each start. The shim finds it by looking up the port the
+  `teleprompter` process is listening on.
+- **The WebSocket has no password** and listens on every network interface, so anyone on the same
+  network can drive the teleprompter while it runs.
+- **A connection is only served when the next one arrives** (a bug in 0.3.0; its own
+  `scripts/ws-smoke.mjs` times out). The shim follows each command with a throwaway connection.
+- **Its own MCP server does not replace the shim**: it only reads and writes files and has no
+  playback tools.
+
 ## Parts
 
 | Part | Job | Depends on |
@@ -78,6 +104,6 @@ effects, keying or b-roll happen at this stage.
 ## Handoff
 
 Handoff is per take. `cut` followed by `keep` uploads the take folder, confirms it, and sends the
-callback. `handoff` is what is left for the end of the session: check that every kept take is
-uploaded and on the timeline, and report anything missing. The session appears as a project under
-`edit/projects/`.
+callback. The take goes into the server's content folder for the video,
+`<content root>/<video-slug>/`. `handoff` is what is left for the end of the session: check that
+every kept take is uploaded and on the timeline, and report anything missing. None of this is built.

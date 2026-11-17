@@ -77,7 +77,7 @@ control shim                         direct/shim.mjs serve <session>
 
 Two steps per kept take, in this order, so the server never starts on half a take.
 
-**Upload.** `rsync --checksum` of `direct/takes/<session>/<take>/` to the server, then a second
+**Upload.** `rsync --checksum` of `direct/takes/<session>/<take>/` to the server's content folder, then a second
 dry run that must report nothing left to send. The take is marked uploaded in `take.json`.
 
 **Callback.** One queue item on the server's OpenRig, created from the laptop:
@@ -104,8 +104,9 @@ rig queue create --host edit-server \
   script, and whether the take is kept.
 - `rig queue create` is the one queue command that accepts `--host`; `rig stream emit` does not.
 
-Still to decide: which rig and seat receive the item, the server's address and token, and where
-takes land (`edit/projects/<session>/takes/` is the proposal).
+Takes land in `<content root>/<video-slug>/` on the server; the content root is in that machine's
+git-ignored `PATH.md`. Still to decide: which rig and seat receive the item, and the server's
+address and token.
 
 ## 3. On the server: `video:first-edit` aligns, cuts, appends
 

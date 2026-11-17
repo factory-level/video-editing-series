@@ -1,0 +1,11 @@
+#!/bin/sh
+# Stage 2 (server): open a project's editor on the LAN. See edit/README.md.
+#   bin/edit                    list projects and what is running
+#   bin/edit <project>          start its editor and print the address to open
+#   bin/edit <project> --stop   stop a HyperFrames preview
+#   bin/edit --stop-openfilm    stop OpenFilm Studio
+root=$(dirname "$(readlink -f "$0")")/..
+case "${1:-}" in
+  -h|--help) sed -n '2,6s/^# \{0,1\}//p' "$0"; exit 0 ;;
+esac
+exec "$root/edit/launch" "$@"

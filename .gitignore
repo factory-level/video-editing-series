@@ -15,3 +15,5 @@ direct/takes/
 # stage 1 runtime state
 direct/.run.json
 direct/.*.log
+# this machine's content path (see README, Handoff)
+PATH.md

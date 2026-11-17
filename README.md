@@ -100,9 +100,10 @@ audio**, and the microphone's **studio audio**.
    director orchestrates the cut; nobody starts it by hand.
 3. The rig's editor agents align the scratch audio to the studio audio, so the studio track replaces
    the camera's sound in sync.
-4. They cut every reading into its own piece and sort the pieces by idea, checked against the
-   teleprompter script. Nothing is thrown away: a line's retakes and false starts sit in one
-   lettered folder with it, and one reading of each idea is marked as suggested.
+4. They cut every attempt into its own piece and sort the pieces by topic. You direct this aloud:
+   say **"cut cut"** to close a topic and **"best best"** after the attempt to use
+   ([glossary](first-edit/README.md#directing-the-cut-aloud)). Nothing is thrown away: every
+   attempt at a topic sits in one lettered folder, with the pick marked.
 5. They append the take to the session's **raw timeline**, one clip per idea using the suggested
    reading, with a little padding left on each side so a person can trim it or swap in another
    reading.

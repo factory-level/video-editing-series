@@ -6,7 +6,10 @@
 start, a retake and an unscripted remark, a camera clip whose scratch audio starts at a different
 moment and is noisy, and the script.
 
-    uv run first-edit/test/make-sample-take.py <take folder>
+    uv run first-edit/test/make-sample-take.py <take folder> [--cues]
+
+With --cues the speaker directs the cut aloud instead: three topics closed by "cut cut", the first
+with three attempts and a "best best" (see first-edit/glossary.json).
 
 The camera starts 0.27 s before the studio recorder, so first-edit should report
 "studio = camera -0.270 s".
@@ -43,6 +46,25 @@ PERFORMANCE = [
 ]
 
 
+# the same idea, directed aloud: three topics, each closed by "cut cut"
+CUE_SCRIPT = [
+    "Welcome to the video editing series. Today we look at the first edit.",
+    "Each take is uploaded to the edit server as soon as it is kept.",
+    "A team of agents cuts every attempt into its own piece. Then the effects edit begins.",
+]
+CUE_PERFORMANCE = [
+    (2.0, "Welcome to the video editing series. Today we look at the edit."),      # attempt 1: wrong words
+    (1.2, "Welcome to the video"),                                                 # attempt 2: false start
+    (1.0, CUE_SCRIPT[0]),                                                          # attempt 3
+    (0.8, "Best best."),
+    (0.7, "Cut cut."),
+    (1.5, CUE_SCRIPT[1]),
+    (0.8, "Cut cut."),
+    (1.5, "A team of agents cuts every attempt."),                                 # attempt 1: stops short
+    (1.2, CUE_SCRIPT[2]),                                                          # attempt 2
+]
+
+
 def say(text: str, folder: Path, voices: Path) -> np.ndarray:
     target = folder / "line.wav"
     subprocess.run([sys.executable, "-m", "piper", "-m", VOICE, "--data-dir", str(voices), "-f", str(target)],
@@ -61,9 +83,12 @@ def write_wav(path: Path, samples: np.ndarray) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
+    cues = "--cues" in sys.argv
+    where = [a for a in sys.argv[1:] if a != "--cues"]
+    if len(where) != 1:
         sys.exit(__doc__)
-    take = Path(sys.argv[1])
+    take = Path(where[0])
+    script, performance = (CUE_SCRIPT, CUE_PERFORMANCE) if cues else (SCRIPT, PERFORMANCE)
     take.mkdir(parents=True, exist_ok=True)
     voices = Path.home() / ".cache" / "first-edit-test-voices"
     voices.mkdir(parents=True, exist_ok=True)
@@ -73,7 +98,7 @@ def main() -> None:
     rng = np.random.default_rng(7)
     parts = []
     with tempfile.TemporaryDirectory() as tmp:
-        for pause, text in PERFORMANCE:
+        for pause, text in performance:
             parts += [np.zeros(int(pause * RATE), dtype=np.float32), say(text, Path(tmp), voices)]
     parts.append(np.zeros(int(1.5 * RATE), dtype=np.float32))
     speech = np.concatenate(parts)
@@ -95,9 +120,10 @@ def main() -> None:
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "96k", "-shortest", str(take / "camera.mp4"),
         ], check=True)
-    (take / "script.md").write_text("# Sample take\n\n" + "\n".join(SCRIPT) + "\n", encoding="utf-8")
+    (take / "script.md").write_text("# Sample take\n\n" + "\n".join(script) + "\n", encoding="utf-8")
     print(f"{take}: camera.mp4 ({seconds:.1f} s), studio.wav ({len(studio) / RATE:.1f} s), script.md")
-    print(f"expected: studio = camera {-CAMERA_LEAD:+.3f} s; 8 readings in 6 ideas")
+    expected = "3 topics (a, b, c) with 3, 1 and 2 attempts; a3 called best" if cues else "8 readings in 6 ideas"
+    print(f"expected: studio = camera {-CAMERA_LEAD:+.3f} s; {expected}")
 
 
 if __name__ == "__main__":

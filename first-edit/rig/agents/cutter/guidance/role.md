@@ -15,8 +15,12 @@ in the same idea folder as the line it belongs to, so a person can pick a differ
    `studio.wav`, transcribes, cuts each reading and writes `pieces.json`.
 3. If it stops with "do not line up clearly", do not pass `--force`. Close the item as an
    escalation with the score it printed: a person needs to look at that take.
-4. Read `pieces.json` and check the sorting against `script.md`:
-   - each idea folder holds readings of one idea only;
+4. Read `pieces.json` and check the sorting. `sorted_by` says how it was done: by the speaker's
+   spoken cuts ("cut cut", see `first-edit/glossary.json`), or by `script.md` when no cut was said.
+   - `cues` lists what was heard. If a piece's text still contains a cue ("cut cut", "best best"),
+     the transcriber wrote it another way: report the wording so it can be added to the glossary;
+   - an attempt the speaker called best (`called_best`) is the pick. Never override it;
+   - each folder holds attempts at one topic only;
    - a reading that says two script lines in one breath, or one line split across two pieces by a
      long pause, is a `--gap` problem: rerun with a larger or smaller `--gap` (default 0.6 s);
    - the suggested reading of each idea is a complete reading of it.

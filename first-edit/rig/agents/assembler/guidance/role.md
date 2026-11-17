@@ -26,6 +26,6 @@ titles and music belong to stage 2, not to you.
   timeline, including clips from earlier takes: a person may have trimmed them.
 - A take already on the timeline is only added again with `--replace`, and only when the queue
   item asks for it.
-- To use a different reading of an idea, change that one clip's `src` to another file in the same
-  idea folder and set its `data-duration` from `pieces.json`. Do this only when asked.
+- The pick is the file ending `-best`. To use a different attempt, change that one clip's `src` to
+  another file in the same folder and set its `data-duration` from `pieces.json`. Do this only when asked.
 - Never copy, move or delete media. Pieces stay on the content disk; the project links to them.

@@ -185,14 +185,59 @@ def tokens(text: str) -> list[str]:
     return re.findall(r"[a-z0-9']+", text.lower().replace("’", "'"))
 
 
+def load_glossary(path: Path) -> list[dict]:
+    try:
+        cues = json.loads(path.read_text(encoding="utf-8"))["cues"]
+    except (OSError, ValueError, KeyError) as error:
+        fail(f"cannot read the glossary {path}: {error}")
+    phrases = []
+    for cue in cues:
+        if cue.get("action") not in ("cut", "best"):
+            fail(f"glossary: \"{cue.get('say')}\" has action \"{cue.get('action')}\"; this version knows cut and best")
+        for said in [cue["say"], *cue.get("heard_as", [])]:
+            phrases.append({"tokens": tokens(said), "action": cue["action"], "say": cue["say"]})
+    return sorted(phrases, key=lambda p: -len(p["tokens"]))   # the longest way of saying it first
+
+
+def take_out_cues(words: list[dict], phrases: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Find the spoken cues. Returns the words without them, each marked with the stretch it
+    belongs to (a new stretch starts after every cue), and the cues with their times."""
+    flat = [(token, index) for index, word in enumerate(words) for token in tokens(word["text"])]
+    cue_words: dict[int, int] = {}      # word index -> cue number
+    cues: list[dict] = []
+    at = 0
+    while at < len(flat):
+        for phrase in phrases:
+            size = len(phrase["tokens"])
+            if [t for t, _ in flat[at:at + size]] == phrase["tokens"]:
+                covered = sorted({index for _, index in flat[at:at + size]})
+                cues.append({"say": phrase["say"], "action": phrase["action"],
+                             "start": words[covered[0]]["start"], "end": words[covered[-1]]["end"]})
+                for index in covered:
+                    cue_words[index] = len(cues) - 1
+                at += size
+                break
+        else:
+            at += 1
+    kept, stretch, last_cue = [], 0, None
+    for index, word in enumerate(words):
+        if index in cue_words:
+            if cue_words[index] != last_cue:
+                stretch, last_cue = stretch + 1, cue_words[index]
+            continue
+        kept.append({**word, "stretch": stretch})
+    return kept, cues
+
+
 def utterances(words: list[dict], gap: float) -> list[dict]:
-    """Words grouped into readings: a new one after a pause, or after a sentence end and a short pause."""
+    """Words grouped into readings: a new one after a pause, after a sentence end and a short pause,
+    or after a spoken cue."""
     groups: list[list[dict]] = []
     for word in words:
         if groups:
             previous = groups[-1][-1]
             pause = word["start"] - previous["end"]
-            if pause < gap and not (re.search(r"[.?!][\"')\]]*$", previous["text"]) and pause >= gap / 2):
+            if word.get("stretch") == previous.get("stretch") and pause < gap and not (re.search(r"[.?!][\"')\]]*$", previous["text"]) and pause >= gap / 2):
                 groups[-1].append(word)
                 continue
         groups.append([word])
@@ -294,7 +339,67 @@ def sort_by_idea(readings: list[dict], ideas: list[dict] | None) -> list[dict]:
     return groups
 
 
-def tighten(readings: list[dict], sound, rate: int) -> None:
+def same_opening(a: list[str], b: list[str]) -> bool:
+    size = min(len(a), len(b), 6)
+    return size >= 2 and difflib.SequenceMatcher(None, a[:size], b[:size], autojunk=False).ratio() >= 0.8
+
+
+def sort_by_cut(readings: list[dict], cues: list[dict]) -> list[dict]:
+    """Put every reading under the topic it was said in: a topic is everything between two spoken
+    cuts. Inside a topic, what was said is joined into attempts: a new attempt starts when the
+    speaker begins the topic again, or after an attempt was called best."""
+    cuts = [c["start"] for c in cues if c["action"] == "cut"]
+    bests = [c["start"] for c in cues if c["action"] == "best"]
+    topics: dict[int, list[dict]] = {}
+    for r in sorted(readings, key=lambda r: r["start"]):
+        number = sum(1 for at in cuts if at <= r["start"])
+        attempts = topics.setdefault(number, [])
+        judged = attempts and any(attempts[-1]["end"] <= at <= r["start"] for at in bests)
+        if attempts and not judged and not same_opening(r["tokens"], attempts[0]["tokens"]):
+            last = attempts[-1]
+            last["text"] += " " + r["text"]
+            last["tokens"] = last["tokens"] + r["tokens"]
+            last["end"] = r["end"]
+        else:
+            attempts.append(dict(r))
+    groups = []
+    for number in sorted(topics):
+        attempts = topics[number]
+        fullest = max(len(a["tokens"]) for a in attempts)
+        pick = [a for a in attempts if len(a["tokens"]) >= 0.8 * fullest][-1]
+        for a in attempts:
+            a["suggested"] = a is pick
+        groups.append({"text": pick["text"], "scripted": True, "order": (number, 0.0), "readings": attempts})
+    return groups
+
+
+def apply_best(groups: list[dict], cues: list[dict]) -> None:
+    """A spoken "best" picks the attempt that was just finished, over the automatic choice."""
+    everything = sorted((r for g in groups for r in g["readings"]), key=lambda r: r["end"])
+    for cue in cues:
+        if cue["action"] != "best":
+            continue
+        before = [r for r in everything if r["end"] <= cue["start"] + 0.05]
+        if not before:
+            continue
+        chosen = before[-1]
+        group = next(g for g in groups if any(r is chosen for r in g["readings"]))
+        for r in group["readings"]:
+            r["suggested"] = r is chosen
+        chosen["called_best"] = True
+        if group["order"][1] == 0.0 and not any("covers" in r for r in group["readings"]):
+            group["text"] = chosen["text"]
+
+
+def neighbours(r: dict, others: list[dict], length: float) -> tuple[float, float]:
+    """The end of whatever comes before this reading and the start of whatever comes after it,
+    counting other readings and spoken cues, so a cut never reaches into either."""
+    before = max((o["end"] for o in others if o is not r and o["end"] <= r["start"] + 1e-6), default=0.0)
+    after = min((o["start"] for o in others if o is not r and o["start"] >= r["end"] - 1e-6), default=length)
+    return before, after
+
+
+def tighten(readings: list[dict], cues: list[dict], sound, rate: int) -> None:
     """Move each reading's start and end onto the speech itself. The transcriber's word times can
     sit a few tenths of a second early or late, which would leave dead air at a jump cut."""
     import numpy as np
@@ -306,10 +411,10 @@ def tighten(readings: list[dict], sound, rate: int) -> None:
     floor = float(np.percentile(level, 10))
     loud = float(np.percentile(level, 95))
     threshold = max(floor * 3.0, floor + (loud - floor) * 0.08)
-    for index, r in enumerate(readings):
-        # look a little outside the reported times, but never into a neighbouring reading
-        before = readings[index - 1]["end"] if index else 0.0
-        after = readings[index + 1]["start"] if index + 1 < len(readings) else len(level) / 100
+    spans = [*readings, *cues]
+    for r in readings:
+        # look a little outside the reported times, but never into a neighbouring reading or cue
+        before, after = neighbours(r, spans, len(level) / 100)
         lo = int(max(before, r["start"] - 0.4) * 100)
         hi = int(min(after, r["end"] + 0.4) * 100)
         speaking = np.nonzero(level[lo:hi] > threshold)[0]
@@ -317,11 +422,11 @@ def tighten(readings: list[dict], sound, rate: int) -> None:
             r["start"], r["end"] = (lo + int(speaking[0])) / 100, (lo + int(speaking[-1]) + 1) / 100
 
 
-def pad_ranges(readings: list[dict], pad: float, length: float) -> None:
-    """Give each reading a little room, without reaching into a neighbouring reading."""
-    for index, r in enumerate(readings):
-        before = readings[index - 1]["end"] if index else 0.0
-        after = readings[index + 1]["start"] if index + 1 < len(readings) else length
+def pad_ranges(readings: list[dict], cues: list[dict], pad: float, length: float) -> None:
+    """Give each reading a little room, without reaching into a neighbouring reading or cue."""
+    spans = [*readings, *cues]
+    for r in readings:
+        before, after = neighbours(r, spans, length)
         r["cut_start"] = max(0.0, r["start"] - min(pad, max(0.0, (r["start"] - before) / 2)))
         r["cut_end"] = min(length, r["end"] + min(pad, max(0.0, (after - r["end"]) / 2)))
 
@@ -381,6 +486,8 @@ def main() -> None:
     parser.add_argument("--model", help="Whisper model (default medium.en on a GPU, small.en on the CPU)")
     parser.add_argument("--language", help="spoken language code; default is the model's own guess")
     parser.add_argument("--max-offset", type=float, default=30.0, help="largest gap to look for between camera and studio starts (default 30 s)")
+    parser.add_argument("--glossary", type=Path, default=Path(__file__).resolve().parent / "glossary.json",
+                        help="the spoken cues to listen for (default first-edit/glossary.json)")
     parser.add_argument("--plan", action="store_true", help="decide and write pieces.json, but cut nothing")
     parser.add_argument("--force", action="store_true", help="cut even when the alignment check fails")
     args = parser.parse_args()
@@ -421,11 +528,17 @@ def main() -> None:
     if not words:
         fail("no speech found in the studio audio")
     length = duration_of(studio)
+    words, cues = take_out_cues(words, load_glossary(args.glossary))
+    if not words:
+        fail("only spoken cues were found in the studio audio")
     readings = utterances(words, args.gap)
     readings.sort(key=lambda r: r["start"])
-    tighten(readings, sound, 16000)
-    pad_ranges(readings, args.pad, length)
-    groups = sort_by_idea(readings, ideas)
+    tighten(readings, cues, sound, 16000)
+    by_cut = any(c["action"] == "cut" for c in cues)
+    groups = sort_by_cut(readings, cues) if by_cut else sort_by_idea(readings, ideas)
+    apply_best(groups, cues)
+    readings = [r for g in groups for r in g["readings"]]
+    pad_ranges(readings, cues, args.pad, length)
 
     camera_length = duration_of(camera) if camera else None
     extension = ".mp4" if camera else ".wav"
@@ -438,11 +551,14 @@ def main() -> None:
             # a reading the camera did not film (it started late or stopped early) is kept as sound
             filmed = bool(camera) and r["camera_start"] >= 0 and r["camera_start"] + (r["cut_end"] - r["cut_start"]) <= camera_length + 0.05
             outside += bool(camera) and not filmed
-            file = f"pieces/{folder_name}/reading-{index}{extension if filmed or not camera else '.wav'}"
+            digits = len(str(len(group["readings"])))
+            file = (f"pieces/{folder_name}/{entry['letter']}{index:0{digits}d}{'-best' if r['suggested'] else ''}"
+                    f"{extension if filmed or not camera else '.wav'}")
             entry["readings"].append({
                 "file": file,
                 "text": r["text"],
                 "suggested": r["suggested"],
+                "called_best": bool(r.get("called_best")),
                 "covers_idea": r.get("covers"),
                 "studio_start": round(r["cut_start"], 3), "studio_end": round(r["cut_end"], 3),
                 "camera_start": round(r["camera_start"], 3) if filmed else None,
@@ -471,6 +587,8 @@ def main() -> None:
         "alignment": alignment,
         "transcription": engine,
         "settings": {"pad": args.pad, "gap": args.gap},
+        "sorted_by": "spoken cuts" if by_cut else ("script" if ideas else "similar openings"),
+        "cues": [{"say": c["say"], "action": c["action"], "at": round(c["start"], 3)} for c in cues],
         "cut": not args.plan,
         "take_seconds": round(length, 3),
         "readings": len(jobs),
@@ -478,7 +596,7 @@ def main() -> None:
         "suggested_seconds": round(suggested, 3),
         "ideas": listed,
     }
-    if ideas:
+    if ideas and not by_cut:
         heard = {e["idea"] for e in listed if e["in_script"]}
         manifest["script_lines_not_heard"] = [i["text"] for i in ideas if i["text"] not in heard]
     (take / "pieces.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -488,14 +606,17 @@ def main() -> None:
     for entry in listed:
         print(f"\n  {entry['letter']:>2}  {entry['idea']}" + ("" if entry["in_script"] or not ideas else "   (not in the script)"))
         for r in entry["readings"]:
-            print(f"      {'*' if r['suggested'] else ' '} {r['studio_start']:7.2f}–{r['studio_end']:7.2f}  {r['text']}")
+            mark = "**" if r["called_best"] else ("* " if r["suggested"] else "  ")
+            print(f"      {mark} {r['studio_start']:7.2f}–{r['studio_end']:7.2f}  {r['text']}")
     if manifest.get("script_lines_not_heard"):
         print("\n  script lines not heard in this take:")
         for line in manifest["script_lines_not_heard"]:
             print(f"      {line}")
     if outside:
         print(f"\n  {outside} reading(s) fall outside the camera clip and were kept as sound only")
-    print(f"\n* suggested reading of each idea\n{take / 'pieces.json'}")
+    if cues:
+        print("\n  cues heard: " + ", ".join(f"\"{c['say']}\" at {c['start']:.1f} s" for c in cues))
+    print(f"\n*  suggested reading   ** called best aloud   (sorted by {manifest['sorted_by']})\n{take / 'pieces.json'}")
 
 
 if __name__ == "__main__":

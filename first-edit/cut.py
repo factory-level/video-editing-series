@@ -266,10 +266,12 @@ def utterances(words: list[dict], gap: float) -> list[dict]:
                 groups[-1].append(word)
                 continue
         groups.append([word])
-    return [
-        {"text": " ".join(w["text"] for w in g), "start": g[0]["start"], "end": g[-1]["end"], "tokens": tokens(" ".join(w["text"] for w in g))}
-        for g in groups
-    ]
+    return [reading_of(g) for g in groups]
+
+
+def reading_of(words: list[dict]) -> dict:
+    text = " ".join(w["text"] for w in words)
+    return {"text": text, "start": words[0]["start"], "end": words[-1]["end"], "tokens": tokens(text), "words": list(words)}
 
 
 def script_ideas(path: Path) -> list[dict]:
@@ -372,33 +374,87 @@ def same_opening(a: list[str], b: list[str]) -> bool:
     return size >= 2 and difflib.SequenceMatcher(None, a[:size], b[:size], autojunk=False).ratio() >= 0.8
 
 
-def sort_by_cut(readings: list[dict], cues: list[dict]) -> list[dict]:
-    """Put every reading under the topic it was said in: a topic is everything between two spoken
-    cuts. Inside a topic, what was said is joined into attempts: a new attempt starts when the
-    speaker begins the topic again, or after an attempt was called best."""
+def script_part(clip: dict, script: list[str]) -> tuple[int, int, int, int] | None:
+    """Where a clip reads the script: the script words it covers (from, to) and the clip's own
+    words that do so (first, last), or None when it is not a reading of the script."""
+    reading = clip["tokens"]
+    blocks = [b for b in difflib.SequenceMatcher(None, script, reading, autojunk=False).get_matching_blocks() if b.size >= 2]
+    if sum(b.size for b in blocks) < max(3, 0.3 * min(len(reading), len(script))):
+        return None
+    owner = [index for index, word in enumerate(clip["words"]) for _ in tokens(word["text"])]   # token -> word
+    return blocks[0].a, blocks[-1].a + blocks[-1].size, owner[blocks[0].b], owner[blocks[-1].b + blocks[-1].size - 1]
+
+
+def alike_enough(a: list[str], b: list[str]) -> bool:
+    """Whether two clips say the same thing: most of the shorter one is found, in order, in the other."""
+    shared = sum(block.size for block in difflib.SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks())
+    return shared >= 0.6 * min(len(a), len(b)) and shared >= 2
+
+
+def sort_by_cut(readings: list[dict], cues: list[dict], ideas: list[dict] | None) -> tuple[list[dict], list[dict]]:
+    """Clips are what the speaker cut aloud: everything between two spoken cuts is one clip, and a
+    clip also ends where the speaker starts the same words again, or calls one best. Clips that say
+    the same thing are candidates for one scene. With a script, a clip is trimmed to the part that
+    reads it, so talk to the director before or after is left out; what was trimmed is returned
+    too, so that no cut reaches into it."""
     cuts = [c["start"] for c in cues if c["action"] == "cut"]
     bests = [c["start"] for c in cues if c["action"] == "best"]
-    topics: dict[int, list[dict]] = {}
+    stretches: dict[int, list[dict]] = {}
     for r in sorted(readings, key=lambda r: r["start"]):
-        number = sum(1 for at in cuts if at <= r["start"])
-        attempts = topics.setdefault(number, [])
-        judged = attempts and any(attempts[-1]["end"] <= at <= r["start"] for at in bests)
-        if attempts and not judged and not same_opening(r["tokens"], attempts[0]["tokens"]):
-            last = attempts[-1]
-            last["text"] += " " + r["text"]
-            last["tokens"] = last["tokens"] + r["tokens"]
-            last["end"] = r["end"]
+        clips = stretches.setdefault(sum(1 for at in cuts if at <= r["start"]), [])
+        judged = clips and any(clips[-1]["end"] <= at <= r["start"] for at in bests)
+        if clips and not judged and not same_opening(r["tokens"], clips[0]["tokens"]):
+            clips[-1] = reading_of(clips[-1]["words"] + r["words"])
         else:
-            attempts.append(dict(r))
-    groups = []
-    for number in sorted(topics):
-        attempts = topics[number]
-        fullest = max(len(a["tokens"]) for a in attempts)
-        pick = [a for a in attempts if len(a["tokens"]) >= 0.8 * fullest][-1]
-        for a in attempts:
-            a["suggested"] = a is pick
-        groups.append({"text": pick["text"], "scripted": True, "order": (number, 0.0), "readings": attempts})
-    return groups
+            clips.append(dict(r))
+    clips = [clip for number in sorted(stretches) for clip in stretches[number]]
+
+    script = [w for idea in ideas for w in idea["tokens"]] if ideas else None
+    trimmed: list[dict] = []
+    for index, clip in enumerate(clips):
+        clip["part"] = None
+        if not script:
+            continue
+        part = script_part(clip, script)
+        if part is None:
+            continue
+        words = clip["words"]
+        trimmed += [{"start": w["start"], "end": w["end"]} for w in words[:part[2]] + words[part[3] + 1:]]
+        clips[index] = {**reading_of(words[part[2]:part[3] + 1]), "part": (part[0], part[1])}
+        clips[index]["covers"] = round(difflib.SequenceMatcher(None, script[part[0]:part[1]], clips[index]["tokens"], autojunk=False).ratio()
+                                       * (part[1] - part[0]) / len(script), 2)
+
+    groups: list[dict] = []
+    for clip in clips:
+        home = None
+        for group in groups:
+            first = group["readings"][0]
+            if script and (clip["part"] is None) != (first["part"] is None):
+                continue
+            if clip["part"] and first["part"]:
+                shared = min(clip["part"][1], first["part"][1]) - max(clip["part"][0], first["part"][0])
+                if shared >= 0.5 * min(clip["part"][1] - clip["part"][0], first["part"][1] - first["part"][0]):
+                    home = group
+                    break
+            elif alike_enough(clip["tokens"], first["tokens"]):
+                home = group
+                break
+        if home is None:
+            home = {"scripted": not script or clip["part"] is not None, "order": (len(groups), 0.0), "readings": []}
+            groups.append(home)
+        home["readings"].append(clip)
+    for group in groups:
+        candidates = group["readings"]
+        if script and candidates[0]["part"]:
+            top = max(c["covers"] for c in candidates)            # the closest reading of the script,
+            pick = [c for c in candidates if c["covers"] >= top - 0.02][-1]   # and the latest of those
+        else:
+            fullest = max(len(c["tokens"]) for c in candidates)
+            pick = [c for c in candidates if len(c["tokens"]) >= 0.8 * fullest][-1]
+        for c in candidates:
+            c["suggested"] = c is pick
+        group["text"] = pick["text"]
+    return groups, trimmed
 
 
 def apply_best(groups: list[dict], cues: list[dict]) -> None:
@@ -415,7 +471,7 @@ def apply_best(groups: list[dict], cues: list[dict]) -> None:
         for r in group["readings"]:
             r["suggested"] = r is chosen
         chosen["called_best"] = True
-        if group["order"][1] == 0.0 and not any("covers" in r for r in group["readings"]):
+        if any("part" in r for r in group["readings"]):   # scenes cut aloud are named after their best clip
             group["text"] = chosen["text"]
 
 
@@ -574,10 +630,17 @@ def main() -> None:
     readings.sort(key=lambda r: r["start"])
     tighten(readings, cues, sound, 16000)
     by_cut = any(c["action"] == "cut" for c in cues)
-    groups = sort_by_cut(readings, cues) if by_cut else sort_by_idea(readings, ideas)
+    trimmed: list[dict] = []
+    if by_cut:
+        groups, trimmed = sort_by_cut(readings, cues, ideas)
+    else:
+        groups = sort_by_idea(readings, ideas)
     apply_best(groups, cues)
     readings = [r for g in groups for r in g["readings"]]
-    pad_ranges(readings, cues, args.pad, length)
+    barriers = [*cues, *trimmed]
+    if by_cut:
+        tighten(readings, barriers, sound, 16000)   # clips were joined and trimmed since the first pass
+    pad_ranges(readings, barriers, args.pad, length)
 
     manifest = {"video": video.name, "recordings": {}, "scenes": []}
     if manifest_file.exists():

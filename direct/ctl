@@ -1,0 +1,5 @@
+#!/bin/sh
+# Send one command to the running stage 1 shim. See direct/launch.
+here=$(dirname "$(readlink -f "$0")")
+node=$(command -v node || ls -1d "$HOME"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1)
+exec "$node" "$here/shim.mjs" "$@"

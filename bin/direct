@@ -1,0 +1,16 @@
+#!/bin/sh
+# Stage 1 (laptop): record takes hands-free. See direct/README.md.
+#   bin/direct                    check this machine: tools, camera, card, microphone, teleprompter
+#   bin/direct doctor             the same check
+#   bin/direct start <session>    start the teleprompter and the control shim
+#   bin/direct stop               stop the shim (a rolling take is cut first)
+#   bin/direct <command>          roll | cut | status | load <file> | keep | discard | prompter <action> | mcp
+root=$(dirname "$(readlink -f "$0")")/..
+case "${1:-}" in
+  -h|--help) sed -n '2,7s/^# \{0,1\}//p' "$0"; exit 0 ;;
+  ''|doctor) exec "$root/direct/launch" ;;
+  start) [ -n "${2:-}" ] || { echo "usage: bin/direct start <session>" >&2; exit 2; }; exec "$root/direct/launch" "$2" ;;
+  stop) exec "$root/direct/launch" --stop ;;
+  handoff) echo "direct handoff is not built yet; see direct/README.md" >&2; exit 2 ;;
+  *) exec "$root/direct/ctl" "$@" ;;
+esac

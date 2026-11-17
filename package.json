@@ -1,0 +1,10 @@
+{
+  "name": "video-editing-series",
+  "private": true,
+  "description": "Base commands for the three modes. Pass arguments after --, e.g. npm run video:direct -- my-session",
+  "scripts": {
+    "video:direct": "direct/launch",
+    "video:first-edit": "first-edit/launch",
+    "video:edit": "edit/launch"
+  }
+}

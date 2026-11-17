@@ -1,0 +1,22 @@
+# tunnel-client profile that serves the stage 1 control shim to ChatGPT.
+# Copy to ~/.config/tunnel-client/direct.yaml, fill in the two placeholders, then:
+#   tunnel-client doctor --profile direct
+#   tunnel-client run --profile direct
+# Create the tunnel at https://platform.openai.com/settings/organization/tunnels and add it as a
+# connector in ChatGPT. Not tried yet with this shim; the teleprompter runs the same way today.
+config_version: 1
+control_plane:
+  base_url: "https://api.openai.com"
+  tunnel_id: "tunnel_REPLACE_ME"
+  api_key: "env:CONTROL_PLANE_API_KEY" # an OpenAI runtime API key, read from the environment
+health:
+  listen_addr: "127.0.0.1:8082" # 8080 and 8081 are used by the openrig and teleprompter profiles
+admin_ui:
+  open_browser: false
+log:
+  level: info
+  format: struct-text
+mcp:
+  commands:
+    - channel: main
+      command: "/REPLACE/WITH/REPO/direct/ctl mcp" # absolute path; a session must be running

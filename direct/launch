@@ -1,0 +1,62 @@
+#!/bin/sh
+# Start a stage 1 recording session on the laptop.
+#   direct/launch              check the laptop: tools, camera, microphone, teleprompter, running session
+#   direct/launch <session>    start the teleprompter and the control shim for that session
+#   direct/launch --stop       stop the shim (a rolling take is cut first); the teleprompter stays open
+# Then drive it with direct/ctl: status | load <file> | roll | cut | keep | discard | prompter <action>
+set -eu
+here=$(dirname "$(readlink -f "$0")")
+run="$here/.run.json"
+node=$(command -v node || ls -1d "$HOME"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1)
+[ -x "$node" ] || { echo "node not found (needs Node 22 or newer)" >&2; exit 1; }
+
+alive() { [ -f "$run" ] && kill -0 "$(sed -E 's/.*"pid":([0-9]+).*/\1/' "$run")" 2>/dev/null; }
+session() { sed -E 's/.*"session":"([^"]*)".*/\1/' "$run"; }
+
+if [ $# -eq 0 ]; then
+  for tool in gphoto2 pw-record ffmpeg rsync teleprompter; do
+    if command -v "$tool" >/dev/null; then printf '%-12s ok\n' "$tool"; else printf '%-12s MISSING\n' "$tool"; fi
+  done
+  cam=$(gphoto2 --auto-detect 2>/dev/null | sed 1,2d | sed 's/ *usb:.*//' | head -1)
+  printf '%-12s %s\n' camera "${cam:-not detected (plug it in over USB and switch it on)}"
+  if [ -n "$cam" ]; then
+    if gio mount -l 2>/dev/null | grep -q 'gphoto2://'; then
+      printf '%-12s %s\n' "" "held by the desktop as a storage device; starting a session releases it"
+    elif ! alive; then
+      free=$(gphoto2 --storage-info 2>/dev/null | sed -n 's/^free=\([0-9]*\) KB/\1/p' | head -1)
+      if [ -n "$free" ]; then printf '%-12s %s\n' "" "card: $((free / 1048576)) GB free"; else printf '%-12s %s\n' "" "NO CARD (the camera records nothing without one)"; fi
+    fi
+  fi
+  printf '%-12s %s\n' microphone "${DIRECT_MIC:-$(pactl get-default-source 2>/dev/null || echo unknown) (default source)}"
+  if pgrep -x teleprompter >/dev/null; then printf '%-12s running\n' teleprompter; else printf '%-12s not running\n' teleprompter; fi
+  echo
+  if alive; then "$node" "$here/shim.mjs" status; else echo "no session running; start one with: direct/launch <session>"; fi
+  exit 0
+fi
+
+if [ "$1" = --stop ]; then
+  alive || { rm -f "$run"; echo "no session running"; exit 0; }
+  pid=$(sed -E 's/.*"pid":([0-9]+).*/\1/' "$run"); name=$(session)
+  kill "$pid"
+  while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
+  echo "stopped session $name"; exit 0
+fi
+
+name=$1
+case "$name" in *[!A-Za-z0-9._-]*|-*) echo "session names use letters, digits, dot, dash and underscore" >&2; exit 1 ;; esac
+if alive; then
+  [ "$(session)" = "$name" ] || { echo "session $(session) is running; stop it first with: direct/launch --stop" >&2; exit 1; }
+else
+  rm -f "$run"
+  if ! pgrep -x teleprompter >/dev/null; then
+    if command -v teleprompter >/dev/null; then setsid -f teleprompter >"$here/.teleprompter.log" 2>&1
+    else echo "teleprompter is not installed; continuing without it" >&2; fi
+  fi
+  setsid -f "$node" "$here/shim.mjs" serve "$name" >"$here/.shim.log" 2>&1
+  i=0; until [ -f "$run" ]; do i=$((i + 1)); [ $i -gt 50 ] && { echo "the shim did not start; see $here/.shim.log" >&2; exit 1; }; sleep 0.1; done
+  sleep 1 # let the teleprompter open its remote-control port
+fi
+"$node" "$here/shim.mjs" status
+echo
+echo "takes     $here/takes/$name"
+echo "control   direct/ctl roll | cut | status | load <file> | keep | discard | prompter start|pause|faster|slower|reset"

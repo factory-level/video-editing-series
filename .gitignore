@@ -15,9 +15,8 @@ direct/takes/
 # stage 1 runtime state
 direct/.run.json
 direct/.*.log
-# generated sample and test projects (first-edit/README.md)
-edit/projects/0001-sample-video/
-edit/projects/0002-rig-test-video/
+# generated sample and test projects, numbered 9900 and up (first-edit/README.md)
+edit/projects/99[0-9][0-9]-*/
 # this machine's content path (see README, Handoff)
 PATH.md
 
@@ -28,3 +27,7 @@ PATH.md
 CLAUDE.local.md
 # this laptop's stage 1 settings, e.g. which microphone to record
 direct/local.env
+__pycache__/
+
+# this machine's settings (copy .env.example)
+.env

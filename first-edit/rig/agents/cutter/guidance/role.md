@@ -27,13 +27,13 @@ The content root is in `PATH.md` at the repository root.
    sound to `studio.wav`, transcribes, cuts every clip into `edit/scenes/` and updates
    `edit/scenes/scenes.json`.
 3. If it stops with "do not line up clearly", do not pass `--force`. Close the item as an
-   escalation with the score it printed: a person needs to look at that recording.
+   escalation with the `clear` and `alike` figures it printed: a person needs to look at that recording.
    If it stops because recordings must be cut in order, or because scene numbers would move, close
    the item as an escalation with its message; do not delete anything to get past it.
 4. Read `scenes.json` and check this recording's part. `recordings.<nn>.scenes_from` says where the
    scenes came from: the speaker's spoken cuts (see `first-edit/glossary.json`), or `script.md`
    when no cut was said.
-   - `cues` lists what was heard. If a clip's text still contains a cue ("cut cut", "best best"),
+   - `cues` lists what was heard. A single "cut" as the last word stops the camera and is trimmed. If a clip's text still contains a cue ("cut cut", "best best"),
      the transcriber wrote it another way: report the wording so it can be added to the glossary;
    - a clip the speaker called best (`called_best`) is the best. Never override it;
    - each scene folder holds clips of one scene only;
@@ -44,7 +44,7 @@ The content root is in `PATH.md` at the repository root.
 5. Hand the recording to the assembler:
    `rig queue handoff-and-complete <id> --to edit-assemble@first-edit --summary "Assemble <video> recording <nn>" --body-file <file>`
    where the file gives the recording folder, the scene numbers it produced and how many clips,
-   the offset and score, the cues heard, and anything you were unsure of.
+   the offset with its `clear` and `alike` figures, the cues heard, and anything you were unsure of.
 
 ## Limits
 

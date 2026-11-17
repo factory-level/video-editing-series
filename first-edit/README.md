@@ -109,9 +109,10 @@ in ordinary speech; the cues are trimmed out of the clips.
 | --- | --- |
 | **"cut cut"** | This scene is finished. Everything said since the last cut is one scene; the next thing said starts a new one. |
 | **"best best"** | The clip just finished is the one to use for this scene. |
+| **"cut"**, once, as the last word | Stops the camera. It is trimmed off the end of the recording; anywhere else "cut" is an ordinary word. |
 
 The glossary is [`glossary.json`](glossary.json); add a line there to add another way of saying a
-cue. A new kind of cue (something other than cut and best) needs code as well.
+cue. A new kind of cue (something other than cut, best and end) needs code as well.
 
 Inside a scene, a new clip starts when you begin the scene again from its opening words, or after
 you call one best. If you never say "best best" in a scene, the last full clip is the best.
@@ -174,24 +175,27 @@ Claude account while they work.
 ## Try it without a camera
 
 ```sh
-V=<content root>/0001-sample-video
+V=<content root>/9901-sample-video
 uv run first-edit/test/make-sample-recording.py $V/raw/01 --cues
 first-edit/launch   $V/raw/01
 first-edit/assemble $V/raw/01
-bin/edit 0001-sample-video
+bin/edit 9901-sample-video
 ```
 
 The sample is synthetic speech directed aloud: three scenes closed by "cut cut", with 3, 1 and 2
 clips, the first scene's third clip called best, and a camera file that starts 0.27 s before the
-studio recording. Expect `studio = camera -0.270 s`. Without `--cues` it makes a recording with no
+studio recording. Expect `studio = camera -0.270 s`. Samples and tests are numbered 9900 and up,
+which keeps them apart from real videos; their projects are git-ignored. Without `--cues` it makes a recording with no
 spoken cuts (a false start, a retake and an unscripted remark) that is sorted by its script
 instead. Both are a speech synthesiser, so they show the sorting works, not that the cues are
 heard reliably in a real voice.
 
 ## Known limits
 
-- Tested only on generated samples. Real scratch audio from the camera is noisier and may need
-  `--max-offset` raised or a person's look when the alignment score is low.
+- Tested only on generated samples. The sync is trusted when the match is clear (the best offset
+  stands at least 1.5 times above any other) and alike (the two recordings correlate at 0.25 or
+  more once lined up). Those two limits were set on synthetic recordings and on silence, not yet
+  on real ones; a recording that fails them is left for a person.
 - The transcriber can leave out a stumble or a repeated word, so a very short false start may not
   become a clip.
 - Without spoken cuts, a scene is a script sentence. A script written as long sentences gives long

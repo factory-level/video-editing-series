@@ -91,8 +91,13 @@ def main() -> None:
             continue
         clip = next(c for c in scene["clips"] if c["best"])
         if not clip["file"].endswith(".mp4"):
-            print(f"assemble: scene {scene['number']} has no picture (kept as sound only); left off the timeline", file=sys.stderr)
-            continue
+            # the best clip was said while the camera was not filming: use the latest one that has picture
+            filmed = [c for c in scene["clips"] if c["file"].endswith(".mp4")]
+            if not filmed:
+                print(f"assemble: scene {scene['number']} has no picture (sound only); left off the timeline", file=sys.stderr)
+                continue
+            print(f"assemble: scene {scene['number']}: the best clip has no picture; using {filmed[-1]['file'].split('/')[-1]} instead", file=sys.stderr)
+            clip = filmed[-1]
         if not (scenes_dir / clip["file"]).exists():
             fail(f"missing clip {clip['file']}")
         chosen.append((scene, clip))

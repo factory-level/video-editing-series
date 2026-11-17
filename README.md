@@ -5,12 +5,12 @@ by coding agents.
 
 | Stage | Folder | Machine | What happens | Output |
 | --- | --- | --- | --- | --- |
-| 1. Direct + raw edit (live) | [`direct/`](direct/) | Laptop, at the camera; the cut runs on the server | Record takes hands-free; each take is uploaded and cut into the raw narration as you film | A raw timeline that grows take by take |
+| 1. Direct + first edit (live) | [`direct/`](direct/) | Laptop, at the camera; the cut runs on the server | Record takes hands-free; each take is uploaded and cut into the raw narration as you film | A raw timeline that grows take by take |
 | 2. Effects edit + upload | [`edit/`](edit/) | Server | Green screen removal, b-roll, effects, review in a browser, render, upload | The finished video, published |
 
 Status: stage 2's editors are set up and working. Stage 1 records takes on the laptop: camera, microphone
 and teleprompter together. The upload, the callback and
-the raw edit are designed here but not built; see [Open decisions](#open-decisions).
+the first edit are designed here but not built; see [Open decisions](#open-decisions).
 
 ## How it fits together
 
@@ -32,9 +32,11 @@ flowchart TB
     subgraph server["Server"]
         media[("Take folders")]
         rig["OpenRig daemon"]
-        agents["Raw-edit agents"]
-        align["Align waveforms:<br/>camera scratch audio vs studio audio"]
-        cut["Pick kept ranges:<br/>jump cuts, with padding"]
+        agents["First-edit agents"]
+        subgraph firstedit["video:first-edit"]
+            align["Align waveforms:<br/>camera scratch audio vs studio audio"]
+            cut["Pick kept ranges:<br/>jump cuts, with padding"]
+        end
         timeline[("Raw timeline<br/>HyperFrames composition")]
         stage2["Stage 2: effects edit,<br/>review on the LAN, render, upload"]
     end
@@ -68,10 +70,10 @@ One command per mode, from the repo root. Arguments go after `--`.
 | Command | Machine | What it does |
 | --- | --- | --- |
 | `npm run video:direct` | Laptop | Check the laptop; with `-- <session>`, start the teleprompter and the control shim |
-| `npm run video:raw-edit` | Server | Cut uploaded takes into the raw timeline (not built yet) |
+| `npm run video:first-edit` | Server | Waveform-align each uploaded take, cut it per jump cut, append it to the raw timeline (not built yet) |
 | `npm run video:edit` | Server | List projects; with `-- <project>`, open its editor on the LAN |
 
-## Stage 1: direct + raw edit (laptop, cut on the server)
+## Stage 1: direct + first edit (laptop, cut on the server)
 
 You record alone. ChatGPT Advanced Voice is the director: you talk to it with its sound off, and it
 drives the session through a small control shim on the laptop.
@@ -88,7 +90,7 @@ drives the session through a small control shim on the laptop.
 Each take leaves two recordings of the same performance: the camera's video with its own **scratch
 audio**, and the microphone's **studio audio**.
 
-**Raw edit (live).** The cut happens on the server, one take at a time, while you keep filming:
+**First edit (live).** The cut happens on the server, one take at a time, while you keep filming:
 
 1. When a take closes, the laptop uploads its folder to the server and confirms every file arrived
    intact.
@@ -136,12 +138,12 @@ limits.
 
 ```
 ARCHITECTURE.md    how the voice director, the laptop and the server connect
-package.json       the video:direct, video:raw-edit and video:edit commands
+package.json       the video:direct, video:first-edit and video:edit commands
 direct/            stage 1, runs on the laptop
   launch           check the laptop, start or stop a session
   ctl              roll, cut, status and the other commands
   shim.mjs         the control shim behind both, and its MCP server for ChatGPT
-raw-edit/          the cut between the stages, runs on the server (not built yet)
+first-edit/        the cut between the stages, runs on the server (not built yet)
 edit/              stage 2, runs on the server
   launch           open a project's editor on the LAN
   projects/        one folder per video (of-demo and hf-demo are working samples)

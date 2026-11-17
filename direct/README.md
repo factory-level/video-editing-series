@@ -37,7 +37,7 @@ starts that take late.
 | Camera adapter | Start and stop recording on the Canon T6i over USB; report whether it is rolling; pull the clip off the card. | The USB camera project |
 | Mic adapter | Record the studio microphone for exactly the span the camera rolls. | Device and recorder choice |
 | Uploader | When a take closes, copy its folder to the server, confirm every file arrived intact, then call back to the OpenRig there. | Transfer method; the OpenRig callback |
-| Raw-edit agents (on the server's OpenRig) | Align scratch audio to studio audio, remove gaps and retakes, append the take to the raw timeline. | The callback; take folder below |
+| First-edit agents (on the server's OpenRig) | Align scratch audio to studio audio, remove gaps and retakes, append the take to the raw timeline. | The callback; take folder below |
 
 ## Commands the shim offers
 
@@ -57,7 +57,7 @@ takes/<session>/<take>/
   take.json         start time, kept or discarded, notes said aloud
 ```
 
-## Raw edit
+## First edit
 
 The cut runs on the server, not the laptop. It starts by itself for each kept take, as soon as the
 upload is confirmed and the laptop has called back to the OpenRig:

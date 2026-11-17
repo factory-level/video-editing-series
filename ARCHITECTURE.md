@@ -10,7 +10,7 @@ The wiring between the voice director, the laptop and the server. The overview d
 | ChatGPT voice to MCP server, through the OpenAI tunnel | Profile written, not tried |
 | Take upload to the server | Not built |
 | Callback to OpenRig on the server | Not built; commands below are checked against `rig` 0.6.10 help only |
-| Waveform alignment, jump cuts, raw timeline | Not built |
+| `video:first-edit`: waveform alignment, jump cuts, raw timeline | Not built; the command is a stub |
 
 ## One take, end to end
 
@@ -22,7 +22,7 @@ sequenceDiagram
     participant Shim as Shim (laptop)
     participant Gear as Camera + mic + prompter
     participant Rig as OpenRig (server)
-    participant Editors as Raw-edit agents
+    participant Editors as First-edit agents
 
     You->>Voice: "roll"
     Voice->>Tunnel: tools/call roll
@@ -89,10 +89,10 @@ rig host add --id edit-server --transport http --url http://<server>:<port> --be
 
 # per take: the callback
 rig queue create --host edit-server \
-  --destination <raw-edit seat>@<rig> \
+  --destination <first-edit seat>@<rig> \
   --id <session>-<take> \
-  --summary "Raw edit <session> take <take>" \
-  --tags video,raw-edit \
+  --summary "First edit <session> take <take>" \
+  --tags video,first-edit \
   --body-file take-callback.json
 ```
 
@@ -107,9 +107,10 @@ rig queue create --host edit-server \
 Still to decide: which rig and seat receive the item, the server's address and token, and where
 takes land (`edit/projects/<session>/takes/` is the proposal).
 
-## 3. On the server: align, cut, append
+## 3. On the server: `video:first-edit` aligns, cuts, appends
 
-The raw-edit agents work one queue item, which is one take.
+Waveform alignment and jump cuts are the `video:first-edit` command (`first-edit/launch`). The
+first-edit agents run it for one queue item, which is one take.
 
 **Waveform alignment.** The camera clip carries scratch audio from the camera's own microphone;
 `studio.wav` is the good recording of the same performance. They start at slightly different

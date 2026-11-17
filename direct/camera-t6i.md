@@ -46,7 +46,7 @@ card once it is downloaded, so the laptop holds the only copy.
 
 On the first take after `direct/launch` the camera starts up to 9 seconds after the microphone,
 because live view is still coming up; wait ten seconds before the first `roll`. On later takes the
-two recordings differ by about a quarter of a second. The raw edit aligns them by sound in any case.
+two recordings differ by about a quarter of a second. The first edit aligns them by sound in any case.
 
 ## Symptoms
 

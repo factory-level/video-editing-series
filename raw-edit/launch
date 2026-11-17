@@ -1,7 +1,0 @@
-#!/bin/sh
-# Raw edit: cut each uploaded take and append it to the session's raw timeline. Runs on the server,
-# started by the laptop's callback to the OpenRig. Not built yet; see ../README.md, "Open decisions".
-echo "video:raw-edit is not built yet." >&2
-echo "It will run on the server when the laptop calls back after a take is uploaded:" >&2
-echo "align the audio, pick the kept ranges, append the take to the raw timeline." >&2
-exit 1

@@ -1,0 +1,8 @@
+#!/bin/sh
+# First edit: waveform-align each uploaded take, cut it per jump cut, and append it to the session's
+# raw timeline. Runs on the server,
+# started by the laptop's callback to the OpenRig. Not built yet; see ../README.md, "Open decisions".
+echo "video:first-edit is not built yet." >&2
+echo "It will run on the server when the laptop calls back after a take is uploaded:" >&2
+echo "waveform-align camera and studio audio, cut per jump cut, append the take to the raw timeline." >&2
+exit 1

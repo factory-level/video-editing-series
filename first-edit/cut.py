@@ -188,6 +188,7 @@ def transcribe(sound, model_name: str | None, language: str | None) -> tuple[lis
             segments, info = model.transcribe(
                 sound, word_timestamps=True, language=language,
                 condition_on_previous_text=False,   # otherwise a repeated line is often left out
+                temperature=0.0,   # no random retries: the same recording must always cut the same way
                 vad_filter=True, vad_parameters={"min_silence_duration_ms": 300},
             )
             words = [

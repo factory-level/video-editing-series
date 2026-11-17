@@ -1,0 +1,5 @@
+#!/bin/sh
+# Put a cut take on the raw timeline (a HyperFrames composition). See first-edit/README.md.
+#   first-edit/assemble <take folder> [--project <folder>] [--replace] [--plan]
+here=$(dirname "$(readlink -f "$0")")
+exec python3 "$here/assemble.py" "$@"

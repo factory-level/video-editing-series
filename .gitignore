@@ -15,5 +15,14 @@ direct/takes/
 # stage 1 runtime state
 direct/.run.json
 direct/.*.log
+# generated sample and test projects (first-edit/README.md)
+edit/projects/0001-sample-video/
+edit/projects/0002-rig-test-video/
 # this machine's content path (see README, Handoff)
 PATH.md
+
+# written by OpenRig while a team runs here
+.claude/settings.local.json
+.openrig/
+.mcp.json
+CLAUDE.local.md

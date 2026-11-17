@@ -72,7 +72,7 @@ the same things without npm: `bin/direct start <session>`, `bin/direct roll`, `b
 | Command | Machine | What it does |
 | --- | --- | --- |
 | `npm run video:direct` | Laptop | Check the laptop; with `-- <session>`, start the teleprompter and the control shim |
-| `npm run video:first-edit` | Server | Waveform-align each uploaded take, cut it per jump cut, append it to the raw timeline (not built yet) |
+| `npm run video:first-edit` | Server | Sync each uploaded recording and cut it into scenes and clips; `first-edit/assemble` then puts the best clip of each scene on the raw timeline. Built, tested on a sample take only; see [`first-edit/README.md`](first-edit/README.md) |
 | `npm run video:edit` | Server | List projects; with `-- <project>`, open its editor on the LAN |
 
 ## Stage 1: direct + first edit (laptop, cut on the server)
@@ -100,10 +100,12 @@ audio**, and the microphone's **studio audio**.
    director orchestrates the cut; nobody starts it by hand.
 3. The rig's editor agents align the scratch audio to the studio audio, so the studio track replaces
    the camera's sound in sync.
-4. They pick the kept ranges: silences, false starts and retakes go, checked against the
-   teleprompter script.
-5. They append the take to the session's **raw timeline**, either as a clean jump cut or with a
-   little padding left on each side, so a person can trim it further.
+4. They cut the recording into **scenes**, each holding its **clips**: a clip is a candidate, one try
+   at saying the scene. You direct this aloud: say **"cut cut"** to close a scene and
+   **"best best"** after the clip to use ([glossary](first-edit/README.md#directing-the-cut-aloud)).
+   Nothing is thrown away: every clip of a scene sits in one lettered folder, with the best marked.
+5. They append the take to the session's **raw timeline**, the best clip of each scene in order,
+   with a little padding left on each side so a person can trim it or swap in another clip.
 
 The raw timeline is a HyperFrames (HeyGen) composition. It trails the live filming by the time one
 take needs to upload and be cut, and catches up take by take. By the end of the session the whole
@@ -118,7 +120,8 @@ audio, the script and the teleprompter log. The media is large and is copied, no
 timeline is small text, is written on the server and lives in git.
 
 On the server the media lands on a large disk outside this repository, at
-`<content root>/<video-slug>/`. The content root is specific to each machine, so it is written in a
+`<content root>/<nnnn-video-slug>/raw/<nn>/`, one numbered folder per recording; first edit writes
+beside it, under `edit/` ([the full tree](first-edit/README.md#where-files-go)). The content root is specific to each machine, so it is written in a
 `PATH.md` at the repository root that is git-ignored and never published.
 
 ## Stage 2: effects edit + upload (server)
@@ -152,7 +155,7 @@ direct/            stage 1, runs on the laptop
   launch           check the laptop, start or stop a session
   ctl              roll, cut, status and the other commands
   shim.mjs         the control shim behind both, and its MCP server for ChatGPT
-first-edit/        the cut between the stages, runs on the server (not built yet)
+first-edit/        the cut between the stages, runs on the server; rig/ is its agent team
 edit/              stage 2, runs on the server
   launch           open a project's editor on the LAN
   projects/        one folder per video (of-demo and hf-demo are working samples)
@@ -176,7 +179,8 @@ These are not settled, and stage 1 cannot be built until they are:
    device is the studio microphone is still open.
 5. **Raw timeline format** — a HyperFrames (HeyGen) composition, extended one take at a time. Still
    open: how the composition is laid out so appending a take does not disturb earlier human edits.
-6. **Media transfer** — the destination is decided: `<content root>/<video-slug>/` on the server.
+6. **Media transfer** — the destination is decided: `<content root>/<nnnn-video-slug>/raw/<nn>/` on
+   the server. The laptop does not upload yet, and who assigns the video number is open.
    Proposed for the copy: `rsync` of each take folder, confirmed by checksum before the callback.
 7. **OpenRig callback** — mechanism proposed: `rig queue create --host` from the laptop (see
    [ARCHITECTURE.md](ARCHITECTURE.md)). Open: which rig and seat receive it, and the server's address.

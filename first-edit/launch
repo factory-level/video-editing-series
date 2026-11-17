@@ -1,8 +1,8 @@
 #!/bin/sh
-# First edit: waveform-align each uploaded take, cut it per jump cut, and append it to the session's
-# raw timeline. Runs on the server,
-# started by the laptop's callback to the OpenRig. Not built yet; see ../README.md, "Open decisions".
-echo "video:first-edit is not built yet." >&2
-echo "It will run on the server when the laptop calls back after a take is uploaded:" >&2
-echo "waveform-align camera and studio audio, cut per jump cut, append the take to the raw timeline." >&2
-exit 1
+# First edit of one take: align camera and studio sound, transcribe, cut every reading into its own
+# piece and sort the pieces by idea. Runs on the server. See first-edit/README.md.
+#   first-edit/launch <take folder> [--plan] [--pad 0.15] [--gap 0.6] [--model NAME] [--force]
+#   first-edit/launch --help
+here=$(dirname "$(readlink -f "$0")")
+command -v uv >/dev/null 2>&1 || { echo "first-edit needs uv: https://docs.astral.sh/uv/" >&2; exit 1; }
+exec uv run --quiet "$here/cut.py" "$@"

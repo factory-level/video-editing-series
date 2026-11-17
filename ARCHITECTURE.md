@@ -10,7 +10,9 @@ The wiring between the voice director, the laptop and the server. The overview d
 | ChatGPT voice to MCP server, through the OpenAI tunnel | Profile written, not tried |
 | Take upload to the server | Not built |
 | Callback to OpenRig on the server | Not built; commands below are checked against `rig` 0.6.10 help only |
-| `video:first-edit`: waveform alignment, jump cuts, raw timeline | Not built; the command is a stub |
+| `first-edit/launch`: waveform alignment, transcription, scenes and clips | Built; tested on generated sample recordings only |
+| `first-edit/assemble`: best clips onto the HyperFrames raw timeline | Built; tested on the same samples |
+| OpenRig team `first-edit` (cutter, assembler) | Built; ran a sample recording from queue item to open timeline unattended |
 
 ## One take, end to end
 
@@ -104,13 +106,15 @@ rig queue create --host edit-server \
   script, and whether the take is kept.
 - `rig queue create` is the one queue command that accepts `--host`; `rig stream emit` does not.
 
-Takes land in `<content root>/<video-slug>/` on the server; the content root is in that machine's
+Each recording lands in `<content root>/<nnnn-video-slug>/raw/<nn>/` on the server
+(the laptop calls a recording a take; the full tree is in [`first-edit/README.md`](first-edit/README.md#where-files-go)); the content root is in that machine's
 git-ignored `PATH.md`. Still to decide: which rig and seat receive the item, and the server's
 address and token.
 
 ## 3. On the server: `video:first-edit` aligns, cuts, appends
 
-Waveform alignment and jump cuts are the `video:first-edit` command (`first-edit/launch`). The
+Waveform alignment and the cut into scenes and clips are the `video:first-edit` command
+(`first-edit/launch`). The
 first-edit agents run it for one queue item, which is one take.
 
 **Waveform alignment.** The camera clip carries scratch audio from the camera's own microphone;
@@ -125,18 +129,21 @@ moments (about a quarter of a second apart in tests, up to 9 seconds on the firs
 4. From here on the picture comes from `camera.mp4`, the sound from `studio.wav` shifted by the
    offset. The scratch audio is not used again.
 
-**Jump cuts.** Decide which stretches of the take stay.
+**Scenes and clips.** Cut the recording into scenes, each holding its clips. A clip is a candidate: one
+try at saying the scene. Every clip is kept.
 
 1. Transcribe `studio.wav` with word timings.
-2. Match the words to `script.md`. Where a line was read more than once, keep the last complete
-   reading.
-3. Drop silences, false starts and repeats. Each kept stretch becomes a range, start to end.
-4. Leave a little padding on each side of a range, or none for a clean jump cut, so a person can
-   still trim. How much is open decision 8 in the README.
+2. Find the spoken cues from [`first-edit/glossary.json`](first-edit/glossary.json) and take them
+   out: "cut cut" closes a scene, "best best" picks the clip just finished.
+3. With spoken cuts, a scene is everything between two cuts, and a new clip starts when the speaker
+   begins the scene again. Without them, each sentence of `script.md` is a scene and its retakes
+   are its clips.
+4. Cut every clip tight to its speech, picture from the camera and sound from the studio, into
+   `edit/scenes/<nn>-<words>/<nn>-<nn>[-best].mp4`, and update `edit/scenes/scenes.json`.
 
-**Append.** Add the take's ranges to the session's raw timeline, a HyperFrames composition: picture
-and studio sound for each range, in script order, after the takes already there. The timeline trails
-the filming by one take's upload and cut. Earlier ranges are not rewritten, so trims a person has
-already made are kept; how the composition is laid out to guarantee that is open decision 5.
+**Append.** `first-edit/assemble` adds the best clip of each scene to the session's raw timeline, a
+HyperFrames composition, after the takes already there. The timeline trails the filming by one
+take's upload and cut. Earlier clips are not rewritten, so trims a person has already made are
+kept. The other clips stay in their scene folders, one `src` change away.
 
 Nothing creative happens here. Effects, keying, b-roll, titles and music belong to stage 2.

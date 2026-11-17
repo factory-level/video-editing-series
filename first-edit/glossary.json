@@ -1,16 +1,16 @@
 {
-  "about": "Words said aloud during a take to direct the cut. Each is a word said twice in a row, so it does not turn up in ordinary speech. first-edit/launch listens for them, acts on them, and trims them out of the pieces. Add a line to add a cue; 'heard_as' lists other ways the transcriber may write it.",
+  "about": "Words said aloud during a take to direct the cut. Each is a word said twice in a row, so it does not turn up in ordinary speech. first-edit/launch listens for them, acts on them, and trims them out of the clips. Add a line to add a cue; 'heard_as' lists other ways the transcriber may write it.",
   "cues": [
     {
       "say": "cut cut",
       "action": "cut",
-      "means": "This topic is finished. Everything said since the last cut is one set of attempts; the next thing said starts a new set.",
+      "means": "This scene is finished. Everything said since the last cut is one scene, and each try at it is a clip; the next thing said starts a new scene.",
       "heard_as": ["cut cut cut", "cutcut"]
     },
     {
       "say": "best best",
       "action": "best",
-      "means": "The attempt just finished is the one to use for this topic.",
+      "means": "The clip just finished is the one to use for this scene.",
       "heard_as": ["best best best", "bestbest"]
     }
   ]

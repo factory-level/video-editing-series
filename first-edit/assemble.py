@@ -2,9 +2,8 @@
 
     first-edit/assemble <take folder> [--project <folder>] [--replace] [--plan]
 
-Reads the take's pieces.json (written by first-edit/launch) and adds one clip per idea, in letter
-order, using each idea's suggested reading. Alternate readings stay in the idea's folder; to use
-one, change that clip's src. Remarks that are not in the script are left off the timeline.
+Reads the take's scenes.json (written by first-edit/launch) and adds each scene's best clip, in
+letter order. The other clips stay in the scene's folder; to use one, change that element's src. Remarks that are not in the script are left off the timeline.
 
 Takes are appended: clips already on the timeline are never moved or rewritten, so edits a person
 made stay. --replace removes this take's own clips first and adds them again at the end.
@@ -38,7 +37,7 @@ PAGE = """<!doctype html>
     </style>
   </head>
   <body>
-    <!-- The raw timeline: narration only, one clip per idea. first-edit/assemble appends takes between
+    <!-- The raw timeline: narration only, the best clip of each scene. first-edit/assemble appends takes between
          the two markers and never moves a clip that is already there. Effects belong to stage 2. -->
     <div id="root" data-composition-id="main" data-start="0" data-duration="1" data-width="1920" data-height="1080">
       @START@
@@ -72,30 +71,30 @@ def main() -> None:
     args = parser.parse_args()
 
     take = args.take.resolve()
-    manifest_file = take / "pieces.json"
+    manifest_file = take / "scenes.json"
     if not manifest_file.exists():
-        fail(f"{take} has no pieces.json; run first-edit/launch on it first")
+        fail(f"{take} has no scenes.json; run first-edit/launch on it first")
     manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
     if not manifest.get("cut"):
-        fail("pieces.json is only a plan (made with --plan); run first-edit/launch without it")
+        fail("scenes.json is only a plan (made with --plan); run first-edit/launch without it")
     slug, take_name = take.parent.name, take.name
     key = re.sub(r"[^a-z0-9]+", "", take_name.lower()) or "take"
     project = (args.project or REPO / "edit" / "projects" / slug).resolve()
 
     scripted = bool(manifest.get("script"))
     chosen = []
-    for idea in manifest["ideas"]:
+    for idea in manifest["scenes"]:
         if scripted and not idea["in_script"]:
             continue
-        reading = next(r for r in idea["readings"] if r["suggested"])
+        reading = next(r for r in idea["clips"] if r["best"])
         if not reading["file"].endswith(".mp4"):
-            print(f"assemble: idea {idea['letter']} has no picture (kept as sound only); left off the timeline", file=sys.stderr)
+            print(f"assemble: scene {idea['letter']} has no picture (kept as sound only); left off the timeline", file=sys.stderr)
             continue
         if not (take / reading["file"]).exists():
-            fail(f"missing piece {reading['file']}")
+            fail(f"missing clip {reading['file']}")
         chosen.append((idea, reading))
     if not chosen:
-        fail("no pieces to place")
+        fail("no clips to place")
 
     index = project / "index.html"
     if not index.exists():
@@ -132,9 +131,9 @@ def main() -> None:
         lines.append(
             f'<video id="{key}-{idea["letter"]}" class="clip" data-start="{number(at)}" data-duration="{number(reading["duration"])}" '
             f'data-track-index="0" data-has-audio="true" src="{html.escape(source)}" '
-            f'title="{html.escape(idea["idea"], quote=True)}"></video>'
+            f'title="{html.escape(idea["scene"], quote=True)}"></video>'
         )
-        print(f"  {number(at):>8}  {idea['letter']}  {reading['duration']:5.2f} s  {idea['idea']}")
+        print(f"  {number(at):>8}  {idea['letter']}  {reading['duration']:5.2f} s  {idea['scene']}")
         at += reading["duration"]
     lines.append(f"<!-- take {take_name}:end -->")
     indent = "      "
@@ -152,10 +151,10 @@ def main() -> None:
     assets.mkdir(exist_ok=True)
     link = assets / take_name
     if link.is_symlink() or link.exists():
-        if not (link.is_symlink() and link.resolve() == (take / "pieces").resolve()):
-            fail(f"{link} exists and is not a link to this take's pieces")
+        if not (link.is_symlink() and link.resolve() == (take / "scenes").resolve()):
+            fail(f"{link} exists and is not a link to this take's scenes")
     else:
-        link.symlink_to(take / "pieces", target_is_directory=True)
+        link.symlink_to(take / "scenes", target_is_directory=True)
     # the link is an absolute path on this machine's content disk: keep it out of git
     ignore = assets / ".gitignore"
     listed = ignore.read_text(encoding="utf-8").splitlines() if ignore.exists() else []

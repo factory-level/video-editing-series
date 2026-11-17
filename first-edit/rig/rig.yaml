@@ -1,9 +1,9 @@
 version: "0.2"
 name: first-edit
 summary: >
-  Turns an uploaded take into the raw timeline. The cutter aligns camera and studio sound, cuts every
-  reading into its own piece and sorts the pieces by idea; the assembler puts the suggested reading of
-  each idea on the HyperFrames timeline. One queue item is one take. See first-edit/README.md.
+  Turns an uploaded take into the raw timeline. The cutter syncs camera and studio sound and cuts the
+  take into scenes, each holding its clips (candidates); the assembler puts the best clip of each
+  scene on the HyperFrames timeline. One queue item is one take. See first-edit/README.md.
 
 pods:
   - id: edit

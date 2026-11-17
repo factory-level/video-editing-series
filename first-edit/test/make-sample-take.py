@@ -8,8 +8,8 @@ moment and is noisy, and the script.
 
     uv run first-edit/test/make-sample-take.py <take folder> [--cues]
 
-With --cues the speaker directs the cut aloud instead: three topics closed by "cut cut", the first
-with three attempts and a "best best" (see first-edit/glossary.json).
+With --cues the speaker directs the cut aloud instead: three scenes closed by "cut cut", the first
+with three clips and a "best best" (see first-edit/glossary.json).
 
 The camera starts 0.27 s before the studio recorder, so first-edit should report
 "studio = camera -0.270 s".
@@ -122,7 +122,7 @@ def main() -> None:
         ], check=True)
     (take / "script.md").write_text("# Sample take\n\n" + "\n".join(script) + "\n", encoding="utf-8")
     print(f"{take}: camera.mp4 ({seconds:.1f} s), studio.wav ({len(studio) / RATE:.1f} s), script.md")
-    expected = "3 topics (a, b, c) with 3, 1 and 2 attempts; a3 called best" if cues else "8 readings in 6 ideas"
+    expected = "3 scenes (a, b, c) with 3, 1 and 2 clips; a3 called best" if cues else "8 clips in 6 scenes"
     print(f"expected: studio = camera {-CAMERA_LEAD:+.3f} s; {expected}")
 
 

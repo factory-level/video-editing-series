@@ -8,18 +8,21 @@
 # ]
 # ///
 """First edit of one take: align the camera's scratch audio to the studio audio, transcribe the
-studio audio, cut every reading into its own piece, and sort the pieces by idea.
+studio audio, and cut the take into scenes, each holding its clips.
+
+A scene is one part of the video, closed aloud by "cut cut". A clip is a candidate for it: one try
+at saying that scene. Every clip is kept and one per scene is marked best.
 
     first-edit/launch <take folder> [options]
 
 A take folder holds a camera clip (camera.mp4, or any one video file), studio.wav and, optionally,
-script.md. Nothing is thrown away: every reading is kept, and readings of the same idea (a line and
-its retakes and false starts) go in one folder:
+script.md. The result:
 
-    <take folder>/pieces/b-<idea words>/reading-1.mp4, reading-2.mp4, ...
+    <take folder>/scenes/b-<scene words>/b1.mp4, b2-best.mp4, ...
+    <take folder>/scenes.json     every scene and clip, with times, the best clip, the cues heard
 
-Idea folders are lettered a, b, c ... in playing order (aa, ab ... past 26), so they sort by name.
-    <take folder>/pieces.json     every idea and reading, with times, and which reading is suggested
+Scene folders are lettered a, b, c ... in the order spoken (aa, ab ... past 26) and clips carry the
+letter and their number, so sorting by name is sorting by time.
 
 Picture comes from the camera, sound from the studio microphone.
 """
@@ -473,7 +476,7 @@ def name_for(number: int, total: int, text: str) -> str:
     while 26 ** width < total:
         width += 1
     words = "-".join(tokens(text)[:6]).replace("'", "")
-    return f"{letters(number, width)}-{words[:48] or 'idea'}"
+    return f"{letters(number, width)}-{words[:48] or 'scene'}"
 
 
 # ---------------------------------------------------------------- main
@@ -481,14 +484,14 @@ def name_for(number: int, total: int, text: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(prog="first-edit/launch", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("take", type=Path, help="the take folder")
-    parser.add_argument("--pad", type=float, default=0.15, help="seconds kept before and after each reading (default 0.15)")
-    parser.add_argument("--gap", type=float, default=0.6, help="a pause this long starts a new piece (default 0.6)")
+    parser.add_argument("--pad", type=float, default=0.15, help="seconds kept before and after each clip (default 0.15)")
+    parser.add_argument("--gap", type=float, default=0.6, help="without spoken cuts, a pause this long starts a new clip (default 0.6)")
     parser.add_argument("--model", help="Whisper model (default medium.en on a GPU, small.en on the CPU)")
     parser.add_argument("--language", help="spoken language code; default is the model's own guess")
     parser.add_argument("--max-offset", type=float, default=30.0, help="largest gap to look for between camera and studio starts (default 30 s)")
     parser.add_argument("--glossary", type=Path, default=Path(__file__).resolve().parent / "glossary.json",
                         help="the spoken cues to listen for (default first-edit/glossary.json)")
-    parser.add_argument("--plan", action="store_true", help="decide and write pieces.json, but cut nothing")
+    parser.add_argument("--plan", action="store_true", help="decide and write scenes.json, but cut nothing")
     parser.add_argument("--force", action="store_true", help="cut even when the alignment check fails")
     args = parser.parse_args()
 
@@ -545,21 +548,21 @@ def main() -> None:
     listed, jobs, outside = [], [], 0
     for number, group in enumerate(groups, 1):
         folder_name = name_for(number, len(groups), group["text"])
-        entry = {"number": number, "letter": folder_name.split("-")[0], "idea": group["text"], "in_script": group["scripted"], "folder": f"pieces/{folder_name}", "readings": []}
+        entry = {"number": number, "letter": folder_name.split("-")[0], "scene": group["text"], "in_script": group["scripted"], "folder": f"scenes/{folder_name}", "clips": []}
         for index, r in enumerate(group["readings"], 1):
             r["camera_start"] = r["cut_start"] - alignment["offset"]
-            # a reading the camera did not film (it started late or stopped early) is kept as sound
+            # a clip the camera did not film (it started late or stopped early) is kept as sound
             filmed = bool(camera) and r["camera_start"] >= 0 and r["camera_start"] + (r["cut_end"] - r["cut_start"]) <= camera_length + 0.05
             outside += bool(camera) and not filmed
             digits = len(str(len(group["readings"])))
-            file = (f"pieces/{folder_name}/{entry['letter']}{index:0{digits}d}{'-best' if r['suggested'] else ''}"
+            file = (f"scenes/{folder_name}/{entry['letter']}{index:0{digits}d}{'-best' if r['suggested'] else ''}"
                     f"{extension if filmed or not camera else '.wav'}")
-            entry["readings"].append({
+            entry["clips"].append({
                 "file": file,
                 "text": r["text"],
-                "suggested": r["suggested"],
+                "best": r["suggested"],
                 "called_best": bool(r.get("called_best")),
-                "covers_idea": r.get("covers"),
+                "covers_script_line": r.get("covers"),
                 "studio_start": round(r["cut_start"], 3), "studio_end": round(r["cut_end"], 3),
                 "camera_start": round(r["camera_start"], 3) if filmed else None,
                 "duration": round(r["cut_end"] - r["cut_start"], 3),
@@ -568,7 +571,7 @@ def main() -> None:
         listed.append(entry)
 
     if not args.plan:
-        folder = take / "pieces"
+        folder = take / "scenes"
         if folder.exists():
             shutil.rmtree(folder)
         video_args = encoder() if camera else []
@@ -577,8 +580,8 @@ def main() -> None:
             print(f"  cutting {file}  ({r['cut_end'] - r['cut_start']:.1f} s)", flush=True)
             cut_piece(camera if filmed else None, studio, r, alignment["offset"], take / file, video_args)
 
-    total = sum(r["duration"] for e in listed for r in e["readings"])
-    suggested = sum(r["duration"] for e in listed for r in e["readings"] if r["suggested"])
+    total = sum(r["duration"] for e in listed for r in e["clips"])
+    suggested = sum(r["duration"] for e in listed for r in e["clips"] if r["best"])
     manifest = {
         "take": take.name,
         "camera": camera.name if camera else None,
@@ -591,32 +594,32 @@ def main() -> None:
         "cues": [{"say": c["say"], "action": c["action"], "at": round(c["start"], 3)} for c in cues],
         "cut": not args.plan,
         "take_seconds": round(length, 3),
-        "readings": len(jobs),
+        "clips": len(jobs),
         "speech_seconds": round(total, 3),
-        "suggested_seconds": round(suggested, 3),
-        "ideas": listed,
+        "best_seconds": round(suggested, 3),
+        "scenes": listed,
     }
     if ideas and not by_cut:
-        heard = {e["idea"] for e in listed if e["in_script"]}
+        heard = {e["scene"] for e in listed if e["in_script"]}
         manifest["script_lines_not_heard"] = [i["text"] for i in ideas if i["text"] not in heard]
-    (take / "pieces.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (take / "scenes.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    print(f"\n{len(jobs)} readings in {len(listed)} ideas, all kept: {total:.1f} s of speech in a {length:.1f} s take; "
-          f"the suggested readings run {suggested:.1f} s")
+    print(f"\n{len(jobs)} clips in {len(listed)} scenes, all kept: {total:.1f} s of speech in a {length:.1f} s take; "
+          f"the best clips run {suggested:.1f} s")
     for entry in listed:
-        print(f"\n  {entry['letter']:>2}  {entry['idea']}" + ("" if entry["in_script"] or not ideas else "   (not in the script)"))
-        for r in entry["readings"]:
-            mark = "**" if r["called_best"] else ("* " if r["suggested"] else "  ")
+        print(f"\n  {entry['letter']:>2}  {entry['scene']}" + ("" if entry["in_script"] or not ideas else "   (not in the script)"))
+        for r in entry["clips"]:
+            mark = "**" if r["called_best"] else ("* " if r["best"] else "  ")
             print(f"      {mark} {r['studio_start']:7.2f}–{r['studio_end']:7.2f}  {r['text']}")
     if manifest.get("script_lines_not_heard"):
         print("\n  script lines not heard in this take:")
         for line in manifest["script_lines_not_heard"]:
             print(f"      {line}")
     if outside:
-        print(f"\n  {outside} reading(s) fall outside the camera clip and were kept as sound only")
+        print(f"\n  {outside} clip(s) fall outside the camera recording and were kept as sound only")
     if cues:
         print("\n  cues heard: " + ", ".join(f"\"{c['say']}\" at {c['start']:.1f} s" for c in cues))
-    print(f"\n*  suggested reading   ** called best aloud   (sorted by {manifest['sorted_by']})\n{take / 'pieces.json'}")
+    print(f"\n*  best clip   ** called best aloud   (scenes from {manifest['sorted_by']})\n{take / 'scenes.json'}")
 
 
 if __name__ == "__main__":

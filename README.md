@@ -72,7 +72,7 @@ the same things without npm: `bin/direct start <session>`, `bin/direct roll`, `b
 | Command | Machine | What it does |
 | --- | --- | --- |
 | `npm run video:direct` | Laptop | Check the laptop; with `-- <session>`, start the teleprompter and the control shim |
-| `npm run video:first-edit` | Server | Align each uploaded take, cut every reading into its own piece, sort the pieces by idea; `first-edit/assemble` then puts them on the raw timeline. Built, tested on a sample take only; see [`first-edit/README.md`](first-edit/README.md) |
+| `npm run video:first-edit` | Server | Sync each uploaded take and cut it into scenes and clips; `first-edit/assemble` then puts the best clip of each scene on the raw timeline. Built, tested on a sample take only; see [`first-edit/README.md`](first-edit/README.md) |
 | `npm run video:edit` | Server | List projects; with `-- <project>`, open its editor on the LAN |
 
 ## Stage 1: direct + first edit (laptop, cut on the server)
@@ -100,13 +100,12 @@ audio**, and the microphone's **studio audio**.
    director orchestrates the cut; nobody starts it by hand.
 3. The rig's editor agents align the scratch audio to the studio audio, so the studio track replaces
    the camera's sound in sync.
-4. They cut every attempt into its own piece and sort the pieces by topic. You direct this aloud:
-   say **"cut cut"** to close a topic and **"best best"** after the attempt to use
-   ([glossary](first-edit/README.md#directing-the-cut-aloud)). Nothing is thrown away: every
-   attempt at a topic sits in one lettered folder, with the pick marked.
-5. They append the take to the session's **raw timeline**, one clip per idea using the suggested
-   reading, with a little padding left on each side so a person can trim it or swap in another
-   reading.
+4. They cut the take into **scenes**, each holding its **clips**: a clip is a candidate, one try
+   at saying the scene. You direct this aloud: say **"cut cut"** to close a scene and
+   **"best best"** after the clip to use ([glossary](first-edit/README.md#directing-the-cut-aloud)).
+   Nothing is thrown away: every clip of a scene sits in one lettered folder, with the best marked.
+5. They append the take to the session's **raw timeline**, the best clip of each scene in order,
+   with a little padding left on each side so a person can trim it or swap in another clip.
 
 The raw timeline is a HyperFrames (HeyGen) composition. It trails the live filming by the time one
 take needs to upload and be cut, and catches up take by take. By the end of the session the whole

@@ -1,6 +1,6 @@
 name: first-edit-cutter
 version: "1.0"
-description: Cuts an uploaded take into pieces sorted by idea
+description: Cuts an uploaded take into scenes and clips
 
 defaults:
   runtime: claude-code

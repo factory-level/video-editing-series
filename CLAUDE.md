@@ -1,7 +1,8 @@
 # video workspace
 
-Two stages on two machines; read `README.md` first. `direct/` is stage 1 (laptop: record, raw edit) and is a
-specification only so far. `edit/` is stage 2 (this server: effects edit, render, upload).
+Two stages on two machines; read `README.md` first. `direct/` is stage 1 (laptop: record, then upload
+each take; the raw cut runs on this server's OpenRig when the laptop calls back); start it with `direct/launch`.
+`edit/` is stage 2 (this server: effects edit, render, upload).
 
 - Stage 2 starts from the raw timeline. Do not re-cut narration there, and do not add effects, keying or b-roll in
   stage 1.

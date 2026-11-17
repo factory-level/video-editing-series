@@ -28,3 +28,6 @@ CLAUDE.local.md
 # this laptop's stage 1 settings, e.g. which microphone to record
 direct/local.env
 __pycache__/
+
+# this machine's settings (copy .env.example)
+.env

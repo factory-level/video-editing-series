@@ -142,9 +142,11 @@ def offset_between(scratch, studio, max_seconds: float):
 
 
 def trusted(clear: float, alike: float) -> bool:
-    """A match counts when it stands well above every other lag and the two recordings are alike
-    once lined up. Silence or noise gives clear about 1.1 and alike under 0.15."""
-    return clear >= 1.5 and alike >= 0.25
+    """Whether to believe a match. `alike` is the main evidence: silence or noise gives under 0.15,
+    and the first real camera-against-recorder take gave 0.92. `clear` alone is a weak test on
+    speech, where a retake or the rhythm of a sentence puts a second peak near the first (that same
+    real take gave 1.5), so it is only asked for when the two recordings are not very alike."""
+    return alike >= 0.5 or (alike >= 0.25 and clear >= 1.5)
 
 
 def align(camera: Path, studio: Path, max_seconds: float) -> dict:
@@ -300,7 +302,10 @@ def place_in_script(reading: list[str], script: list[str]) -> tuple[int, int] | 
     reach = len(reading) + 4
     near = [b for b in blocks if abs(b.a - anchor.a) <= reach and (b.size >= 2 or len(reading) <= 3)] or [anchor]
     matched = sum(b.size for b in near)
-    if matched / len(reading) < 0.6 or matched < 2:   # one word in common is not a reading of the script
+    if matched < 2:   # one word in common is not a reading of the script
+        return None
+    # mostly script words, or (when the speaker said other things around it) a good run of them
+    if matched / len(reading) < 0.6 and matched < 5:
         return None
     return min(b.a for b in near), max(b.a + b.size for b in near)
 
@@ -553,7 +558,7 @@ def main() -> None:
         drift = "" if alignment["drift"] is None else f", drift {alignment['drift']:+.3f} s"
         print(f"  studio = camera {alignment['offset']:+.3f} s (clear {alignment['clear']}, alike {alignment['alike']}{drift})")
         if not alignment["ok"] and not args.force:
-            fail("the two recordings do not line up clearly (needs clear >= 1.5 and alike >= 0.25, and no drift). "
+            fail("the two recordings do not line up clearly (needs alike >= 0.5, or alike >= 0.25 with clear >= 1.5, and no drift). "
                  "Nothing was cut; a person should look, or pass --force.")
 
     print(f"transcribing {studio.name}…", flush=True)

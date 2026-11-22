@@ -1,0 +1,4 @@
+#!/bin/sh
+# Mix a reel's sound losslessly from its composition (voice + effects, 24-bit WAV) for reels/finish.
+#   reels/mix <nnnn-slug> [-o <file>]
+exec python3 "$(dirname "$(readlink -f "$0")")/mix.py" "$@"

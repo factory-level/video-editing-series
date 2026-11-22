@@ -1,0 +1,75 @@
+version: "0.2"
+name: reels
+summary: >
+  Prompted reels from Google Drive footage. One queue item is one reel, started by reels/launch. The
+  team syncs sound to picture, cuts the recordings into clips, cuts the silence out of them, compiles and edits a 9:16 reel
+  following the prompt, grades it, adds sound effects and normalizes its sound for Instagram, renders, opens it for review
+  and uploads it back to Drive. A separate team from first-edit; see reels/README.md.
+
+# This repository tracks CLAUDE.md, so OpenRig's managed guidance goes in the git-ignored local file.
+managed_blocks:
+  claude-code: CLAUDE.local.md
+
+# Unattended: Claude's auto mode decides each action instead of stopping to ask a person. The rules
+# below let the commands this team exists to run go through without a decision at all.
+permission_policy: builtin:auto
+
+pods:
+  - id: reel
+    label: Reel
+    members:
+      - id: sync
+        label: Syncer
+        agent_ref: "local:agents/sync"
+        runtime: claude-code
+        profile: default
+        cwd: "../.."
+        claude_permissions:
+          allow: ["Bash(reels/sync *)", "Bash(rig queue *)", "Bash(rig whoami *)"]
+      - id: cut
+        label: Cutter
+        agent_ref: "local:agents/cut"
+        runtime: claude-code
+        profile: default
+        cwd: "../.."
+        claude_permissions:
+          allow: ["Bash(first-edit/launch *)", "Bash(reels/tighten *)", "Bash(rig queue *)", "Bash(rig whoami *)"]
+      - id: edit
+        label: Editor
+        agent_ref: "local:agents/edit"
+        runtime: claude-code
+        profile: default
+        cwd: "../.."
+        claude_permissions:
+          allow: ["Bash(npx -y hyperframes@0.9.58 *)", "Bash(reels/fetch *)", "Bash(bin/edit *)", "Bash(rig queue *)", "Bash(rig whoami *)"]
+      - id: grade
+        label: Colorist
+        agent_ref: "local:agents/grade"
+        runtime: claude-code
+        profile: default
+        cwd: "../.."
+        claude_permissions:
+          allow: ["Bash(npx -y hyperframes@0.9.58 *)", "Bash(bin/edit *)", "Bash(rig queue *)", "Bash(rig whoami *)"]
+      - id: finish
+        label: Finisher
+        agent_ref: "local:agents/finish"
+        runtime: claude-code
+        profile: default
+        cwd: "../.."
+        claude_permissions:
+          allow: ["Bash(npx -y hyperframes@0.9.58 *)", "Bash(reels/finish *)", "Bash(reels/deliver *)", "Bash(bin/edit *)", "Bash(rig queue *)", "Bash(rig whoami *)"]
+    edges:
+      - kind: delegates_to
+        from: sync
+        to: cut
+      - kind: delegates_to
+        from: cut
+        to: edit
+      - kind: delegates_to
+        from: edit
+        to: grade
+      - kind: delegates_to
+        from: grade
+        to: finish
+
+edges: []

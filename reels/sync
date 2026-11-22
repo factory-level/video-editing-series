@@ -1,0 +1,7 @@
+#!/bin/sh
+# Sync a reel's sound to its picture: pair each video from Drive with its separate audio, and lay
+# each pair out as a recording, raw/<nn>/, that first-edit/launch cuts. See reels/README.md.
+#   reels/sync <nnnn-slug> [--plan] [--force] [--broll] [--min-alike 0.25] [--quiet-db -50]
+here=$(dirname "$(readlink -f "$0")")
+command -v uv >/dev/null 2>&1 || { echo "reels/sync needs uv: https://docs.astral.sh/uv/" >&2; exit 1; }
+exec uv run --quiet "$here/sync.py" "$@"

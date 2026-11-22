@@ -1,0 +1,28 @@
+name: reels-cut
+version: "1.0"
+description: Cuts a reel's synced recordings into clips with first edit, then cuts the silence out
+
+defaults:
+  runtime: claude-code
+
+profiles:
+  default:
+    uses:
+      skills: []
+      guidance: []
+      subagents: []
+      plugins: []
+      runtime_resources: []
+
+resources:
+  guidance:
+    - id: role
+      path: guidance/role.md
+
+startup:
+  files:
+    - path: guidance/role.md
+      orientation: role
+      delivery_hint: send_text
+      required: true
+  actions: []

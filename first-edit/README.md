@@ -107,15 +107,24 @@ in ordinary speech; the cues are trimmed out of the clips.
 
 | Say | Means |
 | --- | --- |
-| **"cut cut"** | This scene is finished. Everything said since the last cut is one scene; the next thing said starts a new one. |
-| **"best best"** | The clip just finished is the one to use for this scene. |
+| **"cut cut"** | This take is finished. The next thing said starts a new clip; clips that say the same thing share a scene. |
+| **"best best"** | The clip just finished is the best of its scene so far, king of the hill: say it again after a later take and that one takes over, while the earlier one stays in the folder as a candidate. A single "best" is enough when it stands alone: straight after "cut cut", or with a pause either side (the transcriber often writes the repeat once). Inside a sentence ("the best thing is") it is an ordinary word. |
 | **"cut"**, once, as the last word | Stops the camera. It is trimmed off the end of the recording; anywhere else "cut" is an ordinary word. |
 
 The glossary is [`glossary.json`](glossary.json); add a line there to add another way of saying a
 cue. A new kind of cue (something other than cut, best and end) needs code as well.
 
-Inside a scene, a new clip starts when you begin the scene again from its opening words, or after
-you call one best. If you never say "best best" in a scene, the last full clip is the best.
+Cues are a help, not a requirement; the cut also works out what you meant when you miss one:
+
+- **A missed "cut cut" before a retake.** A new clip starts when you begin the line again, from the
+  same opening words or reworded ("first I want you to…" then "the first thing I want you to…"),
+  after you call one best, or after a pause of `--take-gap` (2.5 s) or more.
+- **A missed "cut cut" between two topics.** Where the middle of a clip opens the way another take
+  opens, the clip is split there, so carrying straight on into the next topic still gives two clips.
+- **False starts.** A fragment of a few words ("first,", "this creator is") joins the scene of the
+  take it was the start of, rather than becoming a scene of its own.
+
+If you never say "best best" in a scene, the last full clip is the best.
 
 When no "cut cut" is heard in a recording, the script decides instead: each script sentence is a
 scene, and its retakes and false starts are its clips. A remark that is not in the script gets its
@@ -134,7 +143,8 @@ bin/edit <nnnn-video-slug>                           # open the timeline in a br
 `launch` needs [uv](https://docs.astral.sh/uv/) and ffmpeg; the first run downloads the Whisper
 model and, for the GPU, about 1 GB of libraries. Options: `--gap` (without spoken cuts, a pause
 this long starts a new clip, default 0.6 s), `--pad` (room kept around each clip, default 0.15 s),
-`--model`, `--force`.
+`--model`, `--force`, `--retranscribe`. The transcript is kept in `edit/scenes/.transcripts/`, so cutting a recording again
+(other options, a glossary change) does not transcribe it again.
 
 Recordings are cut in order. Cutting a recording again keeps its scene numbers; if it would now
 give a different number of scenes while later recordings are already cut, it stops rather than
@@ -191,6 +201,10 @@ instead. Both are a speech synthesiser, so they show the sorting works, not that
 heard reliably in a real voice.
 
 ## Known limits
+
+- HDR footage (HLG or PQ, as phones record it) is tone-mapped to 8-bit Rec.709 as each clip is
+  cut, so clips, previews and grades all see ordinary SDR video. A camera that records SDR is copied
+  as it is.
 
 - Tested only on generated samples. The sync is trusted when the match is clear (the best offset
   stands at least 1.5 times above any other) and alike (the two recordings correlate at 0.25 or

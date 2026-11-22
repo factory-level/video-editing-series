@@ -219,7 +219,26 @@ def load_glossary(path: Path) -> list[dict]:
             fail(f"glossary: \"{cue.get('say')}\" has action \"{cue.get('action')}\"; this version knows cut, best and end")
         for said in [cue["say"], *cue.get("heard_as", [])]:
             phrases.append({"tokens": tokens(said), "action": cue["action"], "say": cue["say"]})
+        # shorter ways that count only when said on their own: straight after a cut cue, or with a
+        # pause either side. The transcriber often writes the repeat once ("best best" as "best."),
+        # and the speaker may say it once; inside a sentence ("the best thing is") it is a word.
+        for said in cue.get("heard_alone", []):
+            phrases.append({"tokens": tokens(said), "action": cue["action"], "say": cue["say"], "alone": True})
     return sorted(phrases, key=lambda p: -len(p["tokens"]))   # the longest way of saying it first
+
+
+ALONE_PAUSE = 0.25   # seconds of quiet either side that make a short cue word stand alone
+
+
+def said_alone(words: list[dict], flat: list[tuple[str, int]], at: int, size: int) -> bool:
+    """Whether the tokens flat[at:at+size] are a whole utterance: a pause (or the start or end of
+    the recording) before and after them."""
+    first, last = flat[at][1], flat[at + size - 1][1]
+    if any(index == first for _, index in flat[:at]) or any(index == last for _, index in flat[at + size:]):
+        return False   # part of a longer word
+    before = words[first]["start"] - words[first - 1]["end"] if first > 0 else 99.0
+    after = words[last + 1]["start"] - words[last]["end"] if last + 1 < len(words) else 99.0
+    return before >= ALONE_PAUSE and after >= ALONE_PAUSE
 
 
 def take_out_cues(words: list[dict], phrases: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -228,12 +247,15 @@ def take_out_cues(words: list[dict], phrases: list[dict]) -> tuple[list[dict], l
     flat = [(token, index) for index, word in enumerate(words) for token in tokens(word["text"])]
     cue_words: dict[int, int] = {}      # word index -> cue number
     cues: list[dict] = []
+    cut_ended_at = -1      # the token just after the last cut cue
     at = 0
     while at < len(flat):
         for phrase in phrases:
             size = len(phrase["tokens"])
             if phrase["action"] == "end" and at + size != len(flat):
                 continue   # an end cue only counts as the last thing said in the recording
+            if phrase.get("alone") and at != cut_ended_at and not said_alone(words, flat, at, size):
+                continue   # a short form counts only on its own
             if [t for t, _ in flat[at:at + size]] == phrase["tokens"]:
                 covered = sorted({index for _, index in flat[at:at + size]})
                 cues.append({"say": phrase["say"], "action": phrase["action"],
@@ -241,6 +263,8 @@ def take_out_cues(words: list[dict], phrases: list[dict]) -> tuple[list[dict], l
                 for index in covered:
                     cue_words[index] = len(cues) - 1
                 at += size
+                if phrase["action"] == "cut":
+                    cut_ended_at = at
                 break
         else:
             at += 1
@@ -374,6 +398,20 @@ def same_opening(a: list[str], b: list[str]) -> bool:
     return size >= 2 and difflib.SequenceMatcher(None, a[:size], b[:size], autojunk=False).ratio() >= 0.8
 
 
+def starts_over(reading: list[str], clip: list[str]) -> bool:
+    """Whether a reading begins the clip's line again, reworded or not: "first I want you to"
+    after "the first thing I want you to do is". Most of the reading's opening words turn up, in
+    order, near the clip's start. A fragment of one or two words counts when it is the clip's
+    opening ("first." after "first I want you to go to GitHub")."""
+    if not reading or not clip:
+        return False
+    head = reading[:5]
+    if len(head) <= 2:
+        return head == clip[:len(head)] or (len(head) == 2 and head[1:] == clip[:1])
+    shared = sum(b.size for b in difflib.SequenceMatcher(None, head, clip[:8], autojunk=False).get_matching_blocks())
+    return shared >= 3 and shared >= 0.6 * len(head)
+
+
 def script_part(clip: dict, script: list[str]) -> tuple[int, int, int, int] | None:
     """Where a clip reads the script: the script words it covers (from, to) and the clip's own
     words that do so (first, last), or None when it is not a reading of the script."""
@@ -400,7 +438,7 @@ def alike_enough(a: list[str], b: list[str]) -> bool:
     return shared >= 0.6 * min(len(a), len(b)) and shared >= 2
 
 
-def sort_by_cut(readings: list[dict], cues: list[dict], ideas: list[dict] | None) -> tuple[list[dict], list[dict]]:
+def sort_by_cut(readings: list[dict], cues: list[dict], ideas: list[dict] | None, take_gap: float = 2.5) -> tuple[list[dict], list[dict]]:
     """Clips are what the speaker cut aloud: everything between two spoken cuts is one clip, and a
     clip also ends where the speaker starts the same words again, or calls one best. Clips that say
     the same thing are candidates for one scene. With a script, a clip is trimmed to the part that
@@ -412,11 +450,17 @@ def sort_by_cut(readings: list[dict], cues: list[dict], ideas: list[dict] | None
     for r in sorted(readings, key=lambda r: r["start"]):
         clips = stretches.setdefault(sum(1 for at in cuts if at <= r["start"]), [])
         judged = clips and any(clips[-1]["end"] <= at <= r["start"] for at in bests)
-        if clips and not judged and not same_opening(r["tokens"], clips[0]["tokens"]):
+        # a missed "cut cut": the speaker starts the line over, or stops long enough to reset
+        again = clips and (same_opening(r["tokens"], clips[0]["tokens"]) or starts_over(r["tokens"], clips[-1]["tokens"])
+                           or any(starts_over(r["tokens"], c["tokens"]) for c in clips))
+        reset = clips and r["start"] - clips[-1]["end"] >= take_gap
+        if clips and not judged and not again and not reset:
+            pieces = clips[-1]["pieces"] + [r]
             clips[-1] = reading_of(clips[-1]["words"] + r["words"])
+            clips[-1]["pieces"] = pieces
         else:
-            clips.append(dict(r))
-    clips = [clip for number in sorted(stretches) for clip in stretches[number]]
+            clips.append({**r, "pieces": [r]})
+    clips = split_topics([clip for number in sorted(stretches) for clip in stretches[number]])
 
     script = [w for idea in ideas for w in idea["tokens"]] if ideas else None
     trimmed: list[dict] = []
@@ -434,9 +478,16 @@ def sort_by_cut(readings: list[dict], cues: list[dict], ideas: list[dict] | None
                                        * (part[1] - part[0]) / len(script), 2)
 
     groups: list[dict] = []
-    for clip in clips:
+    # a false start ("first,", "this creator is") is a try at the take it starts: grouped after the
+    # others, with the nearest take after it that it is the opening of
+    fragments = [c for c in clips if len(c["tokens"]) <= 4 and not c.get("part")]
+    for clip in [c for c in clips if c not in fragments] + fragments:
         home = None
-        for group in groups:
+        if clip in fragments:
+            later = [(r["start"], g) for g in groups for r in g["readings"]
+                     if r["start"] >= clip["start"] and len(r["tokens"]) > len(clip["tokens"]) and starts_over(clip["tokens"], r["tokens"])]
+            home = min(later, key=lambda pair: pair[0])[1] if later else None
+        for group in ([] if home else groups):
             first = group["readings"][0]
             if script and (clip["part"] is None) != (first["part"] is None):
                 continue
@@ -452,6 +503,9 @@ def sort_by_cut(readings: list[dict], cues: list[dict], ideas: list[dict] | None
             home = {"scripted": not script or clip["part"] is not None, "order": (len(groups), 0.0), "readings": []}
             groups.append(home)
         home["readings"].append(clip)
+    for group in groups:   # fragments were grouped last: keep each scene's clips in the order said
+        group["readings"].sort(key=lambda r: r["start"])
+    groups.sort(key=lambda g: g["readings"][0]["start"])
     for group in groups:
         candidates = group["readings"]
         if script and candidates[0]["part"]:
@@ -464,6 +518,32 @@ def sort_by_cut(readings: list[dict], cues: list[dict], ideas: list[dict] | None
             c["suggested"] = c is pick
         group["text"] = pick["text"]
     return groups, trimmed
+
+
+def split_topics(clips: list[dict]) -> list[dict]:
+    """A missed "cut cut" between two topics: the speaker finishes one line and carries straight on
+    into the next. Where a later part of a clip opens the way another clip opens (the next topic,
+    said again as its own take somewhere else), the clip is split there."""
+    changed = True
+    while changed:
+        changed = False
+        openings = [c["pieces"][0]["tokens"] for c in clips]
+        for index, clip in enumerate(clips):
+            own = clip["pieces"][0]["tokens"]
+            for at in range(1, len(clip["pieces"])):
+                piece = clip["pieces"][at]["tokens"]
+                if len(piece) < 3 or starts_over(piece, own):
+                    continue
+                if any(o is not own and len(o) >= 3 and starts_over(piece, o) for o in openings):
+                    head, tail = clip["pieces"][:at], clip["pieces"][at:]
+                    first = {**reading_of([w for p in head for w in p["words"]]), "pieces": head}
+                    second = {**reading_of([w for p in tail for w in p["words"]]), "pieces": tail}
+                    clips[index:index + 1] = [first, second]
+                    changed = True
+                    break
+            if changed:
+                break
+    return clips
 
 
 def apply_best(groups: list[dict], cues: list[dict]) -> None:
@@ -536,6 +616,25 @@ def encoder() -> list[str]:
     return ["-c:v", "libx264", "-preset", "medium", "-crf", "18"]
 
 
+# HDR to SDR: phones (a Pixel, an iPhone) record HLG or PQ in BT.2020. The clips are 8-bit H.264,
+# so the picture is tone-mapped to Rec.709 here, once, from the 10-bit source; otherwise every later
+# step (preview, grading, Instagram) would read 8-bit video still labelled HDR and blow it out.
+TONE_MAP = ("zscale=tin={tin}:min=bt2020nc:pin=bt2020:rin=tv:t=linear:npl=203,format=gbrpf32le,zscale=p=bt709,"
+            "tonemap=tonemap=hable:desat=0:peak=4,zscale=t=bt709:m=bt709:r=tv,format=yuv420p")
+
+
+def picture_filter(camera: Path | None) -> list[str]:
+    """ffmpeg options that bring the camera's picture to 8-bit Rec.709."""
+    if not camera:
+        return []
+    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_transfer",
+                            "-of", "default=nw=1:nk=1", str(camera)], capture_output=True, text=True)
+    transfer = probe.stdout.strip()
+    if transfer in ("arib-std-b67", "smpte2084"):
+        return ["-vf", TONE_MAP.format(tin=transfer), "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
+    return []
+
+
 def cut_piece(camera: Path | None, studio: Path, piece: dict, offset: float, target: Path, video_args: list[str]) -> None:
     length = piece["cut_end"] - piece["cut_start"]
     command = ["ffmpeg", "-v", "error", "-y"]
@@ -589,6 +688,8 @@ def main() -> None:
                         help="the spoken cues to listen for (default first-edit/glossary.json)")
     parser.add_argument("--plan", action="store_true", help="decide and print, but write nothing")
     parser.add_argument("--force", action="store_true", help="cut even when the alignment check fails")
+    parser.add_argument("--take-gap", type=float, default=2.5, help="with spoken cuts, a pause this long starts a new clip even where no cut was said (default 2.5 s)")
+    parser.add_argument("--retranscribe", action="store_true", help="transcribe again instead of using the transcript kept from the last cut")
     args = parser.parse_args()
 
     take = args.take.resolve()
@@ -626,9 +727,22 @@ def main() -> None:
             fail("the two recordings do not line up clearly (needs alike >= 0.5, or alike >= 0.25 with clear >= 1.5, and no drift). "
                  "Nothing was cut; a person should look, or pass --force.")
 
-    print(f"transcribing {studio.name}…", flush=True)
     sound = mono(studio, 16000)   # decoded with ffmpeg, which reads whatever the recorder wrote
-    words, engine = transcribe(sound, args.model, args.language)
+    # the transcript is kept beside the scenes, so cutting a recording again (other options, a
+    # glossary change) does not transcribe it again; --retranscribe ignores it
+    cache_file = scenes_dir / ".transcripts" / f"{recording}.json"
+    source = {"file": studio.name, "size": studio.stat().st_size, "mtime": int(studio.stat().st_mtime),
+              "model": args.model, "language": args.language}
+    cached = json.loads(cache_file.read_text(encoding="utf-8")) if cache_file.exists() and not args.retranscribe else None
+    if cached and cached.get("source") == source:
+        words, engine = cached["words"], cached["engine"]
+        print(f"using the transcript of {studio.name} from {cache_file.name} (--retranscribe to make it again)", flush=True)
+    else:
+        print(f"transcribing {studio.name}…", flush=True)
+        words, engine = transcribe(sound, args.model, args.language)
+        if not args.plan and words:
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            cache_file.write_text(json.dumps({"source": source, "engine": engine, "words": words}) + "\n", encoding="utf-8")
     if not words:
         fail("no speech found in the studio audio")
     length = duration_of(studio)
@@ -641,7 +755,7 @@ def main() -> None:
     by_cut = any(c["action"] == "cut" for c in cues)
     trimmed: list[dict] = []
     if by_cut:
-        groups, trimmed = sort_by_cut(readings, cues, ideas)
+        groups, trimmed = sort_by_cut(readings, cues, ideas, args.take_gap)
     else:
         groups = sort_by_idea(readings, ideas)
     apply_best(groups, cues)
@@ -704,7 +818,7 @@ def main() -> None:
         for old in [sc for sc in manifest["scenes"] if sc["recording"] == recording]:
             shutil.rmtree(scenes_dir / old["folder"], ignore_errors=True)   # this recording's earlier cut
         (video / "edit" / "final").mkdir(parents=True, exist_ok=True)
-        video_args = encoder() if camera else []
+        video_args = (encoder() + picture_filter(camera)) if camera else []
         for file, r, filmed in jobs:
             (scenes_dir / file).parent.mkdir(parents=True, exist_ok=True)
             print(f"  cutting {file}  ({r['cut_end'] - r['cut_start']:.1f} s)", flush=True)

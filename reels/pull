@@ -1,0 +1,76 @@
+#!/bin/sh
+# Download a Google Drive folder's footage for a reel into <content root>/<nnnn-slug>/drive/ with the
+# gws CLI, checking each file against Drive's md5. Writes source.json beside the files; a Google Doc
+# named "prompt" is exported as prompt.md. drive/ is only read after this. See reels/README.md.
+#   reels/pull <drive folder id or URL> <nnnn-slug> [--plan] [--force]
+set -eu
+. "$(dirname "$(readlink -f "$0")")/common.sh"
+case "${1:-}" in -h|--help) sed -n '2,5s/^# \{0,1\}//p' "$0"; exit 0 ;; esac
+[ $# -ge 2 ] || fail "usage: reels/pull <drive folder id or URL> <nnnn-slug> [--plan] [--force]"
+folder=$(folder_id "$1"); slug=$2; shift 2
+plan=0; force=0
+while [ $# -gt 0 ]; do
+  case "$1" in --plan) plan=1 ;; --force) force=1 ;; *) fail "unknown option $1" ;; esac; shift
+done
+check_slug "$slug"
+command -v gws >/dev/null 2>&1 || fail "needs the gws CLI (Google Workspace): npm install -g @googleworkspace/cli, then gws auth login"
+command -v jq >/dev/null 2>&1 || fail "needs jq"
+dest="$(content_root)/$slug/drive"
+
+meta=$(gws_json drive files get --params "$(jq -cn --arg id "$folder" '{fileId:$id,fields:"id,name,mimeType",supportsAllDrives:true}')") \
+  || fail "could not read Drive folder $folder; is gws signed in? (gws auth login)"
+[ "$(printf '%s' "$meta" | jq -r '.mimeType // empty')" = application/vnd.google-apps.folder ] \
+  || fail "$folder is not a Drive folder: $(printf '%s' "$meta" | jq -c '.error.message // .mimeType')"
+folder_name=$(printf '%s' "$meta" | jq -r .name)
+
+query=$(jq -cn --arg id "$folder" --arg sq "'" '{q:($sq + $id + $sq + " in parents and trashed=false"),
+  fields:"nextPageToken,files(id,name,mimeType,size,md5Checksum)",pageSize:1000,
+  supportsAllDrives:true,includeItemsFromAllDrives:true}')
+files=$(gws_json drive files list --params "$query" --page-all | jq -s '[.[].files[]?] | sort_by(.name)') \
+  || fail "could not list Drive folder $folder"
+count=$(printf '%s' "$files" | jq length)
+[ "$count" -gt 0 ] || fail "Drive folder \"$folder_name\" is empty"
+
+echo "Drive folder \"$folder_name\" ($folder): $count items -> $dest"
+printf '%s' "$files" | jq -r '.[] | "  \(.name)  \(if .size then (.size|tonumber/1048576*10|floor/10|tostring) + " MB" else .mimeType end)"'
+if [ "$plan" = 1 ]; then echo "plan only: nothing was downloaded"; exit 0; fi
+
+if [ -d "$dest" ] && [ -n "$(ls -A "$dest" 2>/dev/null)" ]; then
+  [ "$force" = 1 ] || fail "$dest already has files; pass --force to download again (drive/ is otherwise read only)"
+fi
+mkdir -p "$dest"
+
+kept='[]'
+printf '%s' "$files" | jq -c '.[]' > "$dest/.pull.list"
+while IFS= read -r f; do
+  id=$(printf '%s' "$f" | jq -r .id); name=$(printf '%s' "$f" | jq -r .name)
+  mime=$(printf '%s' "$f" | jq -r .mimeType); md5=$(printf '%s' "$f" | jq -r '.md5Checksum // empty')
+  case "$name" in */*|.|..) echo "  skip $name: not a plain file name" >&2; continue ;; esac
+  case "$mime" in
+    application/vnd.google-apps.folder) echo "  skip $name/: subfolders are not pulled" >&2; continue ;;
+    application/vnd.google-apps.document)
+      case "$(printf '%s' "$name" | tr 'A-Z' 'a-z')" in
+        prompt|prompt.md|prompt.txt)
+          (cd "$dest" && gws_json drive files export --params "$(jq -cn --arg id "$id" '{fileId:$id,mimeType:"text/plain"}')" -o ./prompt.md >/dev/null) \
+            || fail "could not export the prompt doc"
+          echo "  prompt.md  (from the Google Doc \"$name\")"
+          kept=$(printf '%s' "$kept" | jq -c --argjson f "$f" '. + [$f + {local:"prompt.md"}]'); continue ;;
+      esac
+      echo "  skip $name: a Google Doc (only one named \"prompt\" is used)" >&2; continue ;;
+    application/vnd.google-apps.*) echo "  skip $name: a native Google file ($mime)" >&2; continue ;;
+  esac
+  # gws writes only inside the current directory
+  (cd "$dest" && gws_json drive files get --params "$(jq -cn --arg id "$id" '{fileId:$id,alt:"media",supportsAllDrives:true}')" -o "./$name" >/dev/null) \
+    || fail "could not download $name"
+  if [ -n "$md5" ]; then
+    got=$(md5sum "$dest/$name" | cut -d' ' -f1)
+    [ "$got" = "$md5" ] || fail "$name arrived damaged (md5 $got, Drive says $md5); run again with --force"
+  fi
+  echo "  $name  ok"
+  kept=$(printf '%s' "$kept" | jq -c --argjson f "$f" --arg n "$name" '. + [$f + {local:$n}]')
+done < "$dest/.pull.list"
+rm -f "$dest/.pull.list"
+
+jq -n --arg id "$folder" --arg name "$folder_name" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson files "$kept" \
+  '{drive_folder:{id:$id,name:$name,url:("https://drive.google.com/drive/folders/" + $id)},pulled_at:$at,files:$files}' > "$dest/source.json"
+echo "wrote $dest/source.json"

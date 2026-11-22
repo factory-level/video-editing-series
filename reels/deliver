@@ -1,0 +1,35 @@
+#!/bin/sh
+# Upload a finished reel, <content root>/<nnnn-slug>/edit/final/<nnnn-slug>.mp4, to Google Drive with
+# the gws CLI: into REELS_DRIVE_OUTPUT if set, else the Drive folder the footage came from. Checks the
+# uploaded copy's md5 and records the link in edit/final/delivered.json. See reels/README.md.
+#   reels/deliver <nnnn-slug> [--plan]
+set -eu
+. "$(dirname "$(readlink -f "$0")")/common.sh"
+case "${1:-}" in -h|--help) sed -n '2,5s/^# \{0,1\}//p' "$0"; exit 0 ;; esac
+[ $# -ge 1 ] || fail "usage: reels/deliver <nnnn-slug> [--plan]"
+slug=$1; plan=0; [ "${2:-}" = --plan ] && plan=1
+check_slug "$slug"
+reel="$(content_root)/$slug"
+final="$reel/edit/final/$slug.mp4"; source="$reel/drive/source.json"
+[ -s "$final" ] || fail "no render at $final; render the project first"
+parent=${REELS_DRIVE_OUTPUT:-}
+if [ -z "$parent" ]; then
+  [ -f "$source" ] || fail "no $source and no REELS_DRIVE_OUTPUT: do not know which Drive folder to upload to"
+  parent=$(jq -r '.drive_folder.id' "$source")
+fi
+parent=$(folder_id "$parent")
+echo "upload $final ($(du -h "$final" | cut -f1)) to Drive folder $parent"
+[ "$plan" = 0 ] || { echo "plan only: nothing was uploaded"; exit 0; }
+
+# gws reads files only inside the current directory
+out=$(cd "$(dirname "$final")" && gws_json drive +upload "./$(basename "$final")" --parent "$parent" --name "$slug.mp4") || fail "upload failed: $out"
+id=$(printf '%s' "$out" | jq -r '.id // empty')
+[ -n "$id" ] || fail "upload gave no file id: $out"
+# confirm what arrived matches what was sent
+md5=$(gws_json drive files get --params "$(jq -cn --arg id "$id" '{fileId:$id,fields:"md5Checksum",supportsAllDrives:true}')" | jq -r '.md5Checksum // empty')
+local_md5=$(md5sum "$final" | cut -d' ' -f1)
+[ -z "$md5" ] || [ "$md5" = "$local_md5" ] || fail "the uploaded copy does not match (Drive md5 $md5, local $local_md5)"
+url="https://drive.google.com/file/d/$id/view"
+jq -n --arg id "$id" --arg url "$url" --arg folder "$parent" --arg md5 "$local_md5" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{drive_file:{id:$id,url:$url,folder:$folder,md5:$md5},delivered_at:$at}' > "$reel/edit/final/delivered.json"
+echo "delivered: $url"

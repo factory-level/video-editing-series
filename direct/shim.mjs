@@ -22,6 +22,10 @@ const prompterScript =
   path.join(os.homedir(), ".local/share/com.teleprompter.app/scripts/current.txt");
 const micTarget = process.env.DIRECT_MIC || ""; // a PipeWire source name or id; empty = the default source
 const OWN_FILES = new Set(["studio.wav", "script.md", "prompter.jsonl", "take.json"]);
+// Continuous mode: stopping a recording (cut) uploads the take to the edit server and queues it for
+// first edit, with no further command, so the raw timeline grows while filming goes on. A take
+// discarded before its upload starts is not sent. The session name is the video: <nnnn-slug>.
+const continuous = /^(1|true|yes|on)$/i.test(process.env.CONTINUOUS_MODE || "");
 
 const out = (cmd, args) => {
   try {
@@ -173,6 +177,39 @@ function serve(session) {
     S.clip = "ready";
   }
 
+  // Handoffs run one at a time and in order: the edit server numbers scenes by arrival.
+  let handoffs = Promise.resolve();
+  const canSend = () => /^\d{4}-./.test(session);
+  function sendOn(n) {
+    writeTake(n, { handoff: "waiting" });
+    handoffs = handoffs.then(async () => {
+      while (S.clip === "downloading" && S.take === n) await sleep(500);
+      const take = readTake(n);
+      if (take.status === "discarded") return writeTake(n, { handoff: "not sent: discarded" });
+      if (!take.clip) return writeTake(n, { handoff: "failed", handoffError: take.clipError || "no camera clip" });
+      const sent = takeDirs().map((t) => readTake(t).recording).filter(Boolean);
+      const rec = String(sent.length + 1).padStart(2, "0");
+      writeTake(n, { recording: rec, handoff: "uploading" });
+      const said = await new Promise((resolve) => {
+        const c = spawn(path.join(here, "handoff"), [takeDir(n), session, rec], { stdio: ["ignore", "pipe", "pipe"] });
+        let text = "";
+        c.stdout.on("data", (d) => (text += d));
+        c.stderr.on("data", (d) => (text += d));
+        c.on("error", (e) => resolve({ code: 1, text: e.message }));
+        c.on("exit", (code) => resolve({ code, text: text.trim() }));
+      });
+      if (said.code === 0) return writeTake(n, { handoff: "queued", handoffAt: now() });
+      // nothing reached the queue, so the number is free for the next take
+      writeTake(n, { recording: null, handoff: "failed", handoffError: said.text.split("\n").pop().replace(/^handoff: /, "") });
+    }).catch((e) => writeTake(n, { handoff: "failed", handoffError: e.message }));
+  }
+  const sendNote = (n) => {
+    if (!continuous) return "";
+    if (!canSend()) return `; not sent on: continuous mode needs a session named <nnnn-slug>, this one is ${session}`;
+    sendOn(n);
+    return "; it goes to the edit server for first edit as soon as it is ready";
+  };
+
   const commands = {
     async status() {
       const model = cameraModel();
@@ -193,6 +230,7 @@ function serve(session) {
         `mic       ${data.mic}`,
         `prompter  ${port ? "running, port " + port : "not running"}`,
         last ? `last take ${last.take}: ${last.status}${last.clip ? ", " + last.clip : ""}` : "last take none",
+        ...(continuous ? [`continuous on; handoff: ${takes.map(readTake).filter((t) => t.handoff).map((t) => `take ${t.take}${t.recording ? " as recording " + t.recording : ""} ${t.handoff}${t.handoffError ? " (" + t.handoffError + ")" : ""}`).join(", ") || "nothing yet"}`] : []),
       ].join("\n");
       return { ok: true, text, data };
     },
@@ -248,11 +286,32 @@ function serve(session) {
       writeTake(n, { ended, seconds, status: "cut", studio: micBytes > 44 ? "studio.wav" : null });
       if (hadCamera) { S.clip = "downloading"; collectClip(n).catch((e) => { S.clip = "missing"; S.camErr = e.message; }); }
       const notes = [micBytes > 44 ? null : "no microphone audio was recorded", hadCamera ? "pulling the clip off the camera" : "no camera clip"].filter(Boolean);
-      return { ok: true, text: `cut take ${n}, ${seconds}s (${notes.join("; ")})` };
+      // In continuous mode the stop itself hands the take on.
+      const sending = hadCamera ? sendNote(n) : (continuous ? "; not sent on: there is no camera clip" : "");
+      return { ok: true, text: `cut take ${n}, ${seconds}s (${notes.join("; ")})${sending}` };
     },
 
     async keep() { return mark("kept"); },
-    async discard() { return mark("discarded"); },
+    // Stand in for the camera and microphone: copy an existing take's files in as a new take.
+    async replay(args, body) {
+      if (S.rolling) return { ok: false, text: "still rolling; cut first" };
+      if (!args[0]) return { ok: false, text: "replay needs a take folder" };
+      const from = path.resolve(body.cwd || process.cwd(), args[0]);
+      const clip = fs.existsSync(from) && fs.readdirSync(from).find((f) => f.startsWith("camera."));
+      if (!clip || !fs.existsSync(path.join(from, "studio.wav"))) return { ok: false, text: `no camera clip and studio.wav in ${from}` };
+      const n = String(takeDirs().length + 1).padStart(3, "0");
+      const d = takeDir(n);
+      fs.mkdirSync(d);
+      for (const f of [clip, "studio.wav", "script.md"]) if (fs.existsSync(path.join(from, f))) fs.copyFileSync(path.join(from, f), path.join(d, f));
+      writeTake(n, { session, take: n, started: now(), status: "cut", replayOf: from, clip, studio: "studio.wav" });
+      S.take = n; S.clip = "ready";
+      return { ok: true, text: `take ${n} replayed from ${from}${sendNote(n)}` };
+    },
+    async discard() {
+      const r = mark("discarded");
+      const last = r.ok && readTake(takeDirs().pop());
+      return last && last.recording ? { ok: true, text: `${r.text}, but it was already sent to the edit server as recording ${last.recording}` } : r;
+    },
 
     async prompter(args) {
       const action = { start: "play", play: "play", pause: "pause", faster: "faster", slower: "slower", reset: "reset" }[args[0]];
@@ -322,9 +381,9 @@ const noArgs = { type: "object", properties: {} };
 const TOOLS = [
   { name: "status", description: "Report the session: whether a take is rolling, camera, microphone, teleprompter, last take.", inputSchema: noArgs },
   { name: "roll", description: "Start a take: camera, microphone and teleprompter start together.", inputSchema: noArgs },
-  { name: "cut", description: "End the take: stop camera, microphone and teleprompter and close the take folder.", inputSchema: noArgs },
+  { name: "cut", description: "End the take: stop camera, microphone and teleprompter and close the take folder. In continuous mode this also sends the take to the edit server for first edit; no keep is needed.", inputSchema: noArgs },
   { name: "keep", description: "Mark the last take as kept.", inputSchema: noArgs },
-  { name: "discard", description: "Mark the last take as discarded.", inputSchema: noArgs },
+  { name: "discard", description: "Mark the last take as discarded. In continuous mode, say it straight after cut to stop the take being sent.", inputSchema: noArgs },
   { name: "load_script", description: "Put a script on the teleprompter, replacing what is there.", inputSchema: { type: "object", properties: { text: { type: "string", description: "The full script text." } }, required: ["text"] } },
   { name: "prompter", description: "Control the teleprompter.", inputSchema: { type: "object", properties: { action: { type: "string", enum: ["start", "pause", "faster", "slower", "reset"] } }, required: ["action"] } },
 ];
@@ -400,7 +459,7 @@ if (mode === "serve") {
 } else if (mode === "mcp") {
   mcp();
 } else if (!mode) {
-  console.error("usage: direct/ctl status | load <file> | roll | cut | keep | discard | prompter start|pause|faster|slower|reset");
+  console.error("usage: direct/ctl status | load <file> | roll | cut | keep | discard | replay <take folder> | prompter start|pause|faster|slower|reset");
   process.exit(2);
 } else {
   const r = await send(mode, rest);

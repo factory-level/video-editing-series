@@ -1,23 +1,35 @@
 {
-  "about": "Words said aloud during a take to direct the cut. Each is a word said twice in a row, so it does not turn up in ordinary speech. first-edit/launch listens for them, acts on them, and trims them out of the clips. Add a line to add a cue; 'heard_as' lists other ways the transcriber may write it.",
+  "about": "Words said aloud during a take to direct the cut. Each is a word said twice in a row, so it does not turn up in ordinary speech. first-edit/launch listens for them, acts on them, and trims them out of the clips. Add a line to add a cue; 'heard_as' lists other ways the transcriber may write it. 'heard_alone' lists shorter ways that count only when said on their own: straight after a cut cue, or with a pause either side. A lone \"best\" is a cue; \"the best thing is\" is not.",
   "cues": [
     {
       "say": "cut cut",
       "action": "cut",
       "means": "This scene is finished. Everything said since the last cut is one scene, and each try at it is a clip; the next thing said starts a new scene.",
-      "heard_as": ["cut cut cut", "cutcut"]
+      "heard_as": [
+        "cut cut cut",
+        "cutcut"
+      ]
     },
     {
       "say": "cut",
       "action": "end",
       "means": "Said once to the director to stop the camera. It only counts as the very last word of a recording, where it is trimmed off; anywhere else it is an ordinary word.",
-      "heard_as": ["and cut", "okay cut"]
+      "heard_as": [
+        "and cut",
+        "okay cut"
+      ]
     },
     {
       "say": "best best",
       "action": "best",
-      "means": "The clip just finished is the one to use for this scene.",
-      "heard_as": ["best best best", "bestbest"]
+      "means": "The clip just finished is the best of its scene so far: king of the hill. Say it again after a later take and that one takes over; the earlier one stays in the scene folder as a candidate.",
+      "heard_as": [
+        "best best best",
+        "bestbest"
+      ],
+      "heard_alone": [
+        "best"
+      ]
     }
   ]
 }

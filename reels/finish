@@ -1,0 +1,58 @@
+#!/bin/sh
+# Finish a rendered reel for Instagram: normalize its sound (two-pass EBU R128 loudnorm, by default
+# -14 LUFS integrated, -1.5 dBTP peak) and encode it as Instagram asks for Reels: 1080x1920 H.264
+# High, yuv420p, 30 fps, AAC 320 kbps 48 kHz stereo, faststart. Reads edit/final/<slug>-master.mov (the
+# HyperFrames render with PCM sound: the one lossy encode is this one), else <slug>-master.mp4 and writes edit/final/<slug>.mp4, then measures it again. See reels/README.md.
+# The sound comes from edit/final/<slug>-mix.wav when there is one (reels/mix: a lossless mix of the
+# composition), else from the render.
+#   reels/finish <nnnn-slug> [--master <file>] [--audio <file>] [--lufs -14] [--peak -1.5] [--fps 30]
+set -eu
+. "$(dirname "$(readlink -f "$0")")/common.sh"
+case "${1:-}" in -h|--help) sed -n '2,6s/^# \{0,1\}//p' "$0"; exit 0 ;; esac
+[ $# -ge 1 ] || fail "usage: reels/finish <nnnn-slug> [--master <file>] [--audio <file>] [--lufs -14] [--peak -1.5] [--fps 30]"
+slug=$1; shift
+check_slug "$slug"
+final_dir="$(content_root)/$slug/edit/final"
+master="$final_dir/$slug-master.mov"; [ -s "$master" ] || master="$final_dir/$slug-master.mp4"; audio="$final_dir/$slug-mix.wav"; lufs=${REELS_LUFS:--14}; peak=${REELS_PEAK:--1.5}; fps=30
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --master) master=$2; shift 2 ;; --audio) audio=$2; shift 2 ;; --lufs) lufs=$2; shift 2 ;;
+    --peak) peak=$2; shift 2 ;; --fps) fps=$2; shift 2 ;;
+    *) fail "unknown option $1" ;;
+  esac
+done
+[ -s "$master" ] || fail "no render at $master; render the project there first"
+out="$final_dir/$slug.mp4"
+probe() { ffprobe -v error -select_streams "$2" -show_entries "$3" -of default=nw=1:nk=1 "$1" | head -n 1; }
+[ -s "$audio" ] || audio=$master
+[ -n "$(probe "$audio" a stream=codec_type)" ] || fail "$audio has no sound; render it with its audio, or run reels/mix"
+echo "picture: $(basename "$master"); sound: $(basename "$audio")"
+
+# pass 1: measure
+# mastering: a gentle glue compressor on the whole mix, measured and normalized after it
+glue="acompressor=threshold=-18dB:ratio=2:attack=20:release=250:makeup=1"
+measured=$(ffmpeg -hide_banner -nostats -i "$audio" -vn \
+  -af "$glue,loudnorm=I=$lufs:TP=$peak:LRA=11:print_format=json" -f null - 2>&1 | sed -n '/^{/,/^}/p')
+[ -n "$measured" ] || fail "could not measure the loudness of $master"
+m() { printf '%s' "$measured" | jq -r ".$1"; }
+echo "master: $(m input_i) LUFS, peak $(m input_tp) dBTP, range $(m input_lra) LU"
+
+# pass 2: normalize and encode
+vf="scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=$fps,format=yuv420p"
+af="$glue,loudnorm=I=$lufs:TP=$peak:LRA=11:measured_I=$(m input_i):measured_TP=$(m input_tp):measured_LRA=$(m input_lra):measured_thresh=$(m input_thresh):offset=$(m target_offset):linear=true,aresample=192000,alimiter=limit=$(awk "BEGIN{print 10^(($peak - 0.8)/20)}"):attack=1:release=50:level=false,aresample=48000"
+# loudnorm's linear mode keeps the dynamics but cannot promise the peak; the limiter after it
+# (run at 4x the sample rate, so inter-sample peaks are caught) holds it under the target
+ffmpeg -hide_banner -v error -y -i "$master" -i "$audio" -map 0:v:0 -map 1:a:0 -shortest \
+  -vf "$vf" -c:v libx264 -profile:v high -preset slow -crf 16 -color_primaries bt709 -color_trc bt709 -colorspace bt709 -maxrate 25M -bufsize 50M -g $((fps * 2)) \
+  -af "$af" -c:a aac -b:a 320k -ar 48000 -ac 2 -movflags +faststart "$out" \
+  || fail "the encode failed"
+
+# check what came out
+after=$(ffmpeg -hide_banner -nostats -i "$out" -vn -af "loudnorm=I=$lufs:TP=$peak:print_format=json" -f null - 2>&1 | sed -n '/^{/,/^}/p')
+size=$(probe "$out" v:0 stream=width),$(probe "$out" v:0 stream=height)
+length=$(probe "$out" v:0 format=duration)
+echo "wrote $out"
+echo "  ${size%,*}x${size#*,}, $(printf '%.1f' "$length") s, $(printf '%s' "$after" | jq -r .input_i) LUFS, peak $(printf '%s' "$after" | jq -r .input_tp) dBTP"
+[ "$size" = 1080,1920 ] || fail "came out ${size%,*}x${size#*,}, not 1080x1920"
+awk "BEGIN{exit !($length > 180)}" && echo "  warning: longer than 3 minutes; Instagram will not post it as a Reel" >&2
+true

@@ -17,6 +17,20 @@ direct/launch --stop          # stop the shim; a rolling take is cut first
 it also offers the tools of other MCP servers, such as the teleprompter's (see
 [ARCHITECTURE.md](../ARCHITECTURE.md)).
 
+**Continuous mode.** With `CONTINUOUS_MODE=1` in `.env`, stopping a recording hands it on. `cut`
+alone, with no `keep`, makes the shim wait for the clip, then run `direct/handoff`: upload the take
+to the edit server, confirm it by checksum, and queue it for the first-edit team. The session name
+is the video, so start it as `direct/launch <nnnn-slug>`; takes become `raw/01`, `raw/02`, … in the
+order they are sent. `direct/ctl status` shows each take's handoff.
+
+- A take whose `studio.wav` averages below `HANDOFF_MIN_DB` (default -40 dB) is not sent: nobody spoke.
+- `discard` straight after `cut`, before the upload starts, stops the take being sent. After that it
+  is too late, and `discard` says so.
+- A take with no camera clip is not sent.
+- `direct/ctl replay <take folder>` stands in for the camera and microphone: it copies an existing
+  take in as a new one and hands it on the same way, to test without filming.
+- `direct/handoff <take folder> <nnnn-slug> <nn>` sends one take by hand.
+
 **Microphone.** `studio.wav` is recorded from the default input unless `DIRECT_MIC` names a PipeWire
 source (`pactl list short sources`). Put it in the git-ignored `.env` at the repository root
 (copy `.env.example`), which `direct/launch` reads, to record a USB recorder while the computer keeps another microphone as its
@@ -29,9 +43,9 @@ DIRECT_MIC=alsa_input.usb-ZOOM_Corporation_F1_000000000000-00.analog-stereo
 Several programs can record one source at once.
 
 **What works:** the shim, the camera (T6i, 1080p clips recorded to the card and pulled into the take
-folder), the microphone, the teleprompter. **Not built:** upload, callback, `handoff`, and
-`prompter to <line>` (the teleprompter cannot seek to a line). The rest of this file is the
-specification.
+folder), the microphone, the teleprompter, and in continuous mode the upload and the queue item.
+**Not built:** `handoff` as a shim command for the end of a session, and `prompter to <line>` (the
+teleprompter cannot seek to a line). The rest of this file is the specification.
 
 **Camera setup** (full notes in [camera-t6i.md](camera-t6i.md))**.** Power switch on the movie position, a card inserted, USB connected. The shim keeps
 one connection open for the whole session, sets the capture target to the card and turns live view

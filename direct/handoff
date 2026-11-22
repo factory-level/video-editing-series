@@ -1,0 +1,38 @@
+#!/bin/sh
+# Hand one recording to the edit server: upload the take folder, confirm it arrived intact, then
+# queue it for first edit. Settings come from the root .env (see .env.example).
+#   direct/handoff <take folder> <nnnn-video-slug> <nn> [--id <queue id>] [--force]
+# --force sends a take whose studio audio is near silent. With CONTINUOUS_MODE=1 the shim runs this
+# for every kept take.
+set -eu
+here=$(dirname "$(readlink -f "$0")")
+if [ -f "$here/../.env" ]; then set -a; . "$here/../.env"; set +a; fi
+fail() { echo "handoff: $*" >&2; exit 1; }
+[ $# -ge 3 ] || fail "usage: direct/handoff <take folder> <nnnn-video-slug> <nn> [--id <queue id>] [--force]"
+take=${1%/}; video=$2; nn=$3; shift 3
+id="$video-$nn"; force=0
+while [ $# -gt 0 ]; do
+  case "$1" in --id) id=$2; shift 2 ;; --force) force=1; shift ;; *) fail "unknown option $1" ;; esac
+done
+: "${EDIT_SERVER_SSH:?set EDIT_SERVER_SSH in .env}" "${EDIT_SERVER_CONTENT_ROOT:?set EDIT_SERVER_CONTENT_ROOT in .env}"
+rig=${EDIT_SERVER_RIG:-'~/.local/bin/rig'}; seat=${FIRST_EDIT_SEAT:-edit-cut@first-edit}
+case "$video" in [0-9][0-9][0-9][0-9]-?*) ;; *) fail "the video must be named <nnnn-slug>, for example 0002-my-video (got $video)" ;; esac
+case "$nn" in [0-9][0-9]) ;; *) fail "the recording number must be two digits (got $nn)" ;; esac
+[ -f "$take/studio.wav" ] || fail "no studio.wav in $take"
+ls "$take"/camera.* >/dev/null 2>&1 || fail "no camera clip in $take"
+
+mean=$(ffmpeg -hide_banner -i "$take/studio.wav" -af volumedetect -f null - 2>&1 | sed -n 's/.*mean_volume: \(-\{0,1\}[0-9.]*\) dB.*/\1/p')
+floor=${HANDOFF_MIN_DB:--40}
+if [ "$force" = 0 ] && awk "BEGIN{exit !(${mean:-0} < $floor)}"; then
+  echo "handoff: not sent: studio.wav averages $mean dB, below $floor dB, so nobody seems to be speaking (--force sends it anyway)" >&2; exit 3
+fi
+
+dst="$EDIT_SERVER_CONTENT_ROOT/$video/raw/$nn"
+ssh -o BatchMode=yes "$EDIT_SERVER_SSH" "mkdir -p '$dst'" || fail "cannot reach $EDIT_SERVER_SSH"
+rsync -a --checksum --delete "$take/" "$EDIT_SERVER_SSH:$dst/" || fail "upload failed"
+left=$(rsync -a --checksum --delete --dry-run --itemize-changes "$take/" "$EDIT_SERVER_SSH:$dst/" | grep -c '^[<>*]' || true)
+[ "$left" = 0 ] || fail "upload not confirmed: $left file(s) still differ"
+echo "uploaded and confirmed: $dst (studio $mean dB)"
+ssh -o BatchMode=yes "$EDIT_SERVER_SSH" "$rig queue create --source upload@external --destination '$seat' --id '$id' --summary 'First edit $video recording $nn' --body 'Recording folder: $dst' --verify" >/dev/null \
+  || fail "uploaded, but the queue item was not created (id $id)"
+echo "queued for $seat: $id"

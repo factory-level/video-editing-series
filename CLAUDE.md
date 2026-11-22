@@ -1,5 +1,12 @@
 # video workspace
 
+**Two ways to make content.** *Continuous* (`direct/` → `first-edit/` → `edit/`, described below):
+record live, cut as you film. *Reels* (`reels/`, server only): Google Drive footage plus a prompt,
+made into a 9:16 Instagram reel by the `reels` OpenRig team (`reels/rig/rig.yaml`: sync, cut, edit,
+grade, finish), then uploaded back to Drive with the `gws` CLI; start it with `bin/reel`, see
+`reels/README.md`. A reel's `drive/` and `raw/` are read only once made, and it reuses first edit's
+sync and cut, unchanged. The continuous stage rules below (no effects in stage 1) do not apply to reels.
+
 Two stages on two machines; read `README.md` first. `direct/` is stage 1 (laptop: record, then upload
 each take; the raw cut runs on this server's OpenRig when the laptop calls back); start it with `direct/launch`.
 `edit/` is stage 2 (this server: effects edit, render, upload).

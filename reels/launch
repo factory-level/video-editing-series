@@ -1,0 +1,96 @@
+#!/bin/sh
+# Start a reel: pull a Google Drive folder's footage to the server, write the prompt beside it, make a
+# vertical HyperFrames project in edit/projects/<nnnn-slug>, and queue it for the reels team. The team
+# syncs sound to picture, cuts, edits, grades, normalizes the sound for Instagram, renders, opens it
+# for review and uploads it back to Drive. See reels/README.md.
+#   reels/launch <drive folder id or URL | local> <nnnn-slug> [--prompt "<text>" | --prompt-file <file>] [--asset <url>]... [--plan] [--force] [--no-queue]
+# --asset fetches an outside video, post or file (the reel being reacted to, say) with reels/fetch.
+# Without --prompt or --prompt-file, the Drive folder must hold a Google Doc or file named "prompt".
+set -eu
+. "$(dirname "$(readlink -f "$0")")/common.sh"
+case "${1:-}" in -h|--help) sed -n '2,8s/^# \{0,1\}//p' "$0"; exit 0 ;; esac
+[ $# -ge 2 ] || fail "usage: reels/launch <drive folder id or URL> <nnnn-slug> [--prompt \"<text>\" | --prompt-file <file>] [--plan] [--force] [--no-queue]"
+drive=$1; slug=$2; shift 2
+prompt=; prompt_file=; plan=0; force=; queue=1; assets=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --prompt) [ $# -ge 2 ] || fail "--prompt needs text"; prompt=$2; shift 2 ;;
+    --prompt-file) [ $# -ge 2 ] || fail "--prompt-file needs a file"; prompt_file=$2; shift 2 ;;
+    --plan) plan=1; shift ;;
+    --force) force=--force; shift ;;
+    --no-queue) queue=0; shift ;;
+    --asset) [ $# -ge 2 ] || fail "--asset needs a URL"; assets="$assets
+$2"; shift 2 ;;
+    *) fail "unknown option $1" ;;
+  esac
+done
+check_slug "$slug"
+[ -z "$prompt" ] || [ -z "$prompt_file" ] || fail "give --prompt or --prompt-file, not both"
+[ -z "$prompt_file" ] || [ -f "$prompt_file" ] || fail "no such prompt file: $prompt_file"
+hf="npx -y hyperframes@0.9.58"
+reel="$(content_root)/$slug"; pulled="$reel/drive"
+project="$repo/edit/projects/$slug"
+seat=${REELS_SEAT:-reel-sync@reels}
+
+# "local": the footage is already in <reel>/drive/ (from reels/photos or a shared Photos link), so pull nothing
+if [ "$drive" = local ]; then
+  ls "$pulled"/* >/dev/null 2>&1 || fail "no footage in $pulled; put it there first (reels/photos <slug> --new)"
+fi
+if [ "$plan" = 1 ]; then
+  [ "$drive" = local ] && echo "local footage: $(ls "$pulled" | tr '\n' ' ')" || "$repo/reels/pull" "$drive" "$slug" --plan
+  echo "would write $pulled/prompt.md, make $project (1080x1920) and queue it to $seat"
+  exit 0
+fi
+
+[ "$drive" = local ] || "$repo/reels/pull" "$drive" "$slug" $force
+
+# The prompt: the command line wins over the one in the Drive folder.
+if [ -n "$prompt" ]; then printf '%s\n' "$prompt" > "$pulled/prompt.md"
+elif [ -n "$prompt_file" ]; then cp "$prompt_file" "$pulled/prompt.md"
+elif [ ! -s "$pulled/prompt.md" ]; then
+  for name in prompt.txt PROMPT.md Prompt.md; do [ -s "$pulled/$name" ] && { cp "$pulled/$name" "$pulled/prompt.md"; break; }; done
+fi
+[ -s "$pulled/prompt.md" ] || fail "no prompt: pass --prompt or --prompt-file, or put a doc named \"prompt\" in the Drive folder"
+mkdir -p "$reel/raw" "$reel/edit/scenes" "$reel/edit/tight" "$reel/edit/final"
+
+# The project: a blank HyperFrames project made vertical, with the media linked, never copied.
+if [ ! -f "$project/index.html" ]; then
+  mkdir -p "$repo/edit/projects"
+  (cd "$repo/edit/projects" && DO_NOT_TRACK=1 HYPERFRAMES_SKIP_SKILLS=1 $hf init "$slug" --example blank --non-interactive --skip-skills >/dev/null) \
+    || fail "could not create the project $project"
+  rm -f "$project/CLAUDE.md" "$project/AGENTS.md"   # the repository's own CLAUDE.md covers this
+  cp "$repo/reels/template/index.html" "$project/index.html"
+  echo "made $project (1080x1920)"
+fi
+mkdir -p "$project/assets"
+mkdir -p "$reel/edit/tight" "$reel/fetched"
+for pair in "drive:$pulled" "raw:$reel/raw" "scenes:$reel/edit/scenes" "tight:$reel/edit/tight" "fetched:$reel/fetched"; do
+  name=${pair%%:*}; target=${pair#*:}; link="$project/assets/$name"
+  if [ -L "$link" ]; then
+    [ "$(readlink -f "$link")" = "$(readlink -f "$target")" ] || fail "$link links somewhere else"
+  elif [ -e "$link" ]; then fail "$link exists and is not a link to $target"
+  else ln -s "$target" "$link"; fi
+  # the links are absolute paths on this machine's content disk: keep them out of git
+  grep -qx "/$name" "$project/assets/.gitignore" 2>/dev/null || echo "/$name" >> "$project/assets/.gitignore"
+done
+
+printf '%s\n' "$assets" | while IFS= read -r url; do
+  [ -z "$url" ] || "$repo/reels/fetch" "$slug" "$url" || fail "could not fetch $url"
+done
+
+body="Reel: $slug
+Footage from Drive: $pulled (source.json lists it)
+Prompt: $pulled/prompt.md
+Fetched assets: $reel/fetched (fetched.json lists them with their creators)
+Recordings: $reel/raw/<nn>/ (made by reels/sync)
+Project: edit/projects/$slug
+Final: $reel/edit/final/$slug.mp4"
+if [ "$queue" = 0 ]; then
+  echo "not queued. Queue it later with:"
+  echo "  rig queue create --source drive@external --destination $seat --summary \"Reel $slug\" --body \"Reel: $slug\""
+  exit 0
+fi
+command -v rig >/dev/null 2>&1 || fail "rig (OpenRig) is not installed; see edit/README.md, or pass --no-queue"
+rig queue create --source drive@external --destination "$seat" --summary "Reel $slug" --body "$body" \
+  || fail "could not queue the reel; is the team up? (rig up reels --yes)"
+echo "queued $slug for $seat; watch it with: rig ps --nodes --rig reels"

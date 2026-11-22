@@ -1,5 +1,28 @@
 # video
 
+Pipelines for making videos with coding agents. There are two ways to make content here.
+
+## Two ways to make content
+
+| | **Continuous** | **Reels** |
+| --- | --- | --- |
+| For | Narrated videos, recorded for this pipeline | Short vertical reels for Instagram from footage already shot |
+| Starts from | You at the camera: takes recorded hands-free, directed by voice | A Google Drive folder of footage, and a prompt |
+| Folders | [`direct/`](direct/) → [`first-edit/`](first-edit/) → [`edit/`](edit/) | [`reels/`](reels/) (it reuses first edit's sync and cut) |
+| Machines | Laptop records; the server cuts and finishes | The server only |
+| Who decides the edit | You, aloud while filming ("cut cut", "best best"), then a person in stage 2 | The prompt; the `reels` agent team edits, grades and mixes it |
+| Agent team | `first-edit` (cutter, assembler) | `reels` (sync, cut, edit, grade, finish) |
+| Timing | Live: the raw timeline grows take by take while you film | Batch: one job per reel, start to finish |
+| Output | A 16:9 video, rendered and uploaded | A 1080x1920 reel at -14 LUFS, uploaded back to Drive |
+| Start it | `bin/direct start <nnnn-slug>` on the laptop | `bin/reel <drive folder> <nnnn-slug> --prompt "…"` on the server |
+
+Both write to the same content disk in the same layout (`<content root>/<nnnn-slug>/`) and both
+open for review with `bin/edit`. They are independent: a reel needs no laptop, camera or voice
+session, and continuous needs no Drive. The rest of this README is about **continuous**; reels are
+described in [`reels/README.md`](reels/README.md).
+
+## Continuous
+
 A two-stage, two-machine pipeline for recording and finishing narrated videos, driven by voice and
 by coding agents.
 
@@ -66,14 +89,16 @@ Solid lines are built; dashed lines are designed and not built yet. Each link is
 
 ## Commands
 
-One command per mode, from the repo root. Arguments go after `--`. `bin/direct` and `bin/edit` are
-the same things without npm: `bin/direct start <session>`, `bin/direct roll`, `bin/edit <project>`.
+One command per mode, from the repo root. Arguments go after `--`. `bin/direct`, `bin/edit` and
+`bin/reel` are the same things without npm: `bin/direct start <session>`, `bin/direct roll`,
+`bin/edit <project>`, `bin/reel <drive folder> <nnnn-slug> --prompt "…"`.
 
 | Command | Machine | What it does |
 | --- | --- | --- |
 | `npm run video:direct` | Laptop | Check the laptop; with `-- <session>`, start the teleprompter and the control shim |
 | `npm run video:first-edit` | Server | Sync each uploaded recording and cut it into scenes and clips; `first-edit/assemble` then puts the best clip of each scene on the raw timeline. Built, tested on a sample take only; see [`first-edit/README.md`](first-edit/README.md) |
 | `npm run video:edit` | Server | List projects; with `-- <project>`, open its editor on the LAN |
+| `npm run video:reel` | Server | **Reels**, not continuous: `-- <drive folder> <nnnn-slug> --prompt "…"` pulls the footage and queues it for the `reels` team. Same as `bin/reel`; see [`reels/README.md`](reels/README.md) |
 
 ## Stage 1: direct + first edit (laptop, cut on the server)
 
@@ -150,12 +175,19 @@ ARCHITECTURE.md    how the voice director, the laptop and the server connect
 PATH.md            this machine's content root (git-ignored, you create it)
 bin/direct         stage 1 command (wraps direct/launch and direct/ctl)
 bin/edit           stage 2 command (wraps edit/launch)
-package.json       the video:direct, video:first-edit and video:edit commands
+bin/reel           reels command (wraps reels/launch and its steps)
+package.json       the video:direct, video:first-edit, video:edit and video:reel commands
 direct/            stage 1, runs on the laptop
   launch           check the laptop, start or stop a session
   ctl              roll, cut, status and the other commands
   shim.mjs         the control shim behind both, and its MCP server for ChatGPT
 first-edit/        the cut between the stages, runs on the server; rig/ is its agent team
+reels/             the other way: prompted reels from Google Drive, runs on the server
+  launch, pull     pull a Drive folder with gws, make the 9:16 project, queue it
+  sync, tighten    pair video with audio; cut the silence out of every clip
+  finish           loudness and Instagram export
+  deliver          upload the finished reel to Drive
+  rig/             the reels agent team: sync, cut, edit, grade, finish
 edit/              stage 2, runs on the server
   launch           open a project's editor on the LAN
   projects/        one folder per video (of-demo and hf-demo are working samples)

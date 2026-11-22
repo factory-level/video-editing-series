@@ -1,0 +1,77 @@
+{
+  "total": 75.16,
+  "pieces": [
+    {
+      "scene": "02",
+      "file": "02-this-creator-is-absolutely-correct-but/02-19-best.mp4",
+      "called": true,
+      "media_start": 0.166,
+      "start": 9.1,
+      "duration": 7.161
+    },
+    {
+      "scene": "04",
+      "file": "04-first-thing-i-want-you-to/04-17-best.mp4",
+      "called": false,
+      "media_start": 0.0,
+      "start": 16.261,
+      "duration": 3.56
+    },
+    {
+      "scene": "06",
+      "file": "06-cloudflare-os-is-completely-open-source/06-07-best.mp4",
+      "called": true,
+      "media_start": 0.0,
+      "start": 19.821,
+      "duration": 3.393
+    },
+    {
+      "scene": "07",
+      "file": "07-cloudflare-os-is-a-collaborative-workspace/07-10-best.mp4",
+      "called": true,
+      "media_start": 0.167,
+      "start": 23.214,
+      "duration": 19.76
+    },
+    {
+      "scene": "08",
+      "file": "08-and-organizations-love-this-they-love/08-01-best.mp4",
+      "called": true,
+      "media_start": 0.0,
+      "start": 42.974,
+      "duration": 7.993
+    },
+    {
+      "scene": "09",
+      "file": "09-and-the-best-thing-about-it/09-02-best.mp4",
+      "called": true,
+      "media_start": 0.0,
+      "start": 50.967,
+      "duration": 11.527
+    },
+    {
+      "scene": "15",
+      "file": "15-and-its-really-simple-to-deploy/15-02-best.mp4",
+      "called": true,
+      "media_start": 0.0,
+      "start": 62.494,
+      "duration": 5.993
+    },
+    {
+      "scene": "19",
+      "file": "19-and-cloudflare-encourages-you-to-customize/19-04-best.mp4",
+      "called": false,
+      "media_start": 0.0,
+      "start": 68.487,
+      "duration": 5.993
+    },
+    {
+      "scene": "21",
+      "file": "21-going-i-guess-if-you-like/21-02-best.mp4",
+      "called": false,
+      "media_start": 2.716,
+      "start": 74.48,
+      "duration": 0.68
+    }
+  ]
+}

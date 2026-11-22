@@ -1,0 +1,113 @@
+#!/bin/sh
+# Download an outside asset for a reel: an Instagram reel or post, a TikTok, a YouTube video, an X
+# post, or a plain file URL (image, video, sound). It lands in <content root>/<nnnn-slug>/fetched/,
+# with fetched.json saying where each file came from and who made it, and the project links that
+# folder as assets/fetched/. See .claude/skills/reel-assets/SKILL.md.
+#   reels/fetch <nnnn-slug> <url> [--name <name>] [--cookies-from-browser <browser>] [--plan] [--force]
+# Uses a current yt-dlp through uvx (Instagram breaks old ones). A login-gated post needs
+# --cookies-from-browser chrome (or firefox) on a machine where that browser is signed in.
+set -eu
+. "$(dirname "$(readlink -f "$0")")/common.sh"
+case "${1:-}" in -h|--help) sed -n '2,8s/^# \{0,1\}//p' "$0"; exit 0 ;; esac
+[ $# -ge 2 ] || fail "usage: reels/fetch <nnnn-slug> <url> [--name <name>] [--cookies-from-browser <browser>] [--plan] [--force]"
+slug=$1; url=$2; shift 2
+name=; cookies=; plan=0; force=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --name) name=$2; shift 2 ;;
+    --cookies-from-browser) cookies=$2; shift 2 ;;
+    --plan) plan=1; shift ;;
+    --force) force=1; shift ;;
+    *) fail "unknown option $1" ;;
+  esac
+done
+check_slug "$slug"
+command -v uvx >/dev/null 2>&1 || fail "needs uv (uvx): https://docs.astral.sh/uv/"
+command -v jq >/dev/null 2>&1 || fail "needs jq"
+reel="$(content_root)/$slug"; dest="$reel/fetched"
+[ -d "$reel" ] || fail "no reel $reel; start it with reels/launch first"
+ytdlp() { uvx --quiet yt-dlp@latest --no-playlist --no-warnings ${cookies:+--cookies-from-browser "$cookies"} "$@"; }
+slugify() { printf '%s' "$1" | tr 'A-Z' 'a-z' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-40 | sed -E 's/-+$//'; }
+
+# what is at the URL: a page yt-dlp knows (a post, a video), or a plain file
+info=$(ytdlp --dump-single-json "$url" 2>/dev/null) || info=
+if [ -n "$info" ]; then
+  kind=page
+  title=$(printf '%s' "$info" | jq -r '.title // .description // "source" | tostring' | head -n 1)
+  [ -n "$name" ] || name=$(slugify "$(printf '%s' "$info" | jq -r '(.channel // .uploader_id // .uploader // "") + " " + (.id // "")')")
+  printf '%s' "$info" | jq -r '"\(.extractor_key): \(.uploader // .channel // "?")\(if .channel then " @" + .channel else "" end), \(if .duration then (.duration | floor | tostring) + " s, " else "" end)\(.width // "?")x\(.height // "?")"'
+else
+  kind=file
+  title=$(basename "${url%%\?*}")
+  [ -n "$name" ] || name=$(slugify "${title%.*}")
+  echo "a plain file: $title"
+fi
+[ -n "$name" ] || name=asset
+echo "-> $dest/$name.*"
+[ "$plan" = 0 ] || { echo "plan only: nothing was downloaded"; exit 0; }
+
+mkdir -p "$dest"
+if ls "$dest/$name".* >/dev/null 2>&1; then
+  [ "$force" = 1 ] || fail "$dest/$name.* already exists; pass --name for another or --force to fetch it again"
+  rm -f "$dest/$name".*
+fi
+if [ "$kind" = page ]; then
+  # gws-style: write inside the target folder; prefer one mp4 with picture and sound
+  (cd "$dest" && ytdlp -f "bv*[vcodec^=avc1]+ba[ext=m4a]/b[vcodec^=avc1]/bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b" --merge-output-format mp4 \
+      -o "$name.%(ext)s" "$url" >/dev/null) || fail "could not download $url (a private or login-gated post needs --cookies-from-browser)"
+else
+  ext=${title##*.}; [ "$ext" != "$title" ] || ext=bin
+  curl -fsSL --retry 2 -o "$dest/$name.$ext" "$url" || fail "could not download $url"
+fi
+file=$(cd "$dest" && ls "$name".* | grep -v '\.part$' | head -n 1)
+[ -n "$file" ] || fail "nothing was downloaded"
+
+# a phone's HDR clip becomes Rec.709 like the reel's own footage (first-edit/cut.py does the same)
+transfer=$(ffprobe -v error -select_streams v:0 -show_entries stream=color_transfer -of default=nw=1:nk=1 "$dest/$file" 2>/dev/null || true)
+case "$transfer" in
+  arib-std-b67|smpte2084)
+    tmp="$dest/.$name.sdr.mp4"
+    ffmpeg -v error -y -i "$dest/$file" -vf "zscale=tin=$transfer:min=bt2020nc:pin=bt2020:rin=tv:t=linear:npl=203,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0:peak=4,zscale=t=bt709:m=bt709:r=tv,format=yuv420p" \
+      -color_primaries bt709 -color_trc bt709 -colorspace bt709 -c:v libx264 -crf 18 -c:a copy "$tmp" && mv "$tmp" "$dest/$name.mp4" \
+      && { [ "$file" = "$name.mp4" ] || rm -f "$dest/$file"; file=$name.mp4; echo "tone-mapped HDR to Rec.709"; } ;;
+esac
+
+# anything that is not H.264 (VP9, AV1, HEVC) becomes H.264, which every preview and phone decodes
+codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of default=nw=1:nk=1 "$dest/$file" 2>/dev/null || true)
+case "$codec" in
+  ''|h264|png|mjpeg|gif|webp) ;;
+  *) tmp="$dest/.$name.h264.mp4"
+     ffmpeg -v error -y -i "$dest/$file" -map 0:v:0 -map 0:a:0? -c:v libx264 -crf 18 -preset medium -pix_fmt yuv420p \
+       -c:a aac -b:a 192k -movflags +faststart "$tmp" && mv "$tmp" "$dest/$name.mp4" \
+       && { [ "$file" = "$name.mp4" ] || rm -f "$dest/$file"; file=$name.mp4; echo "re-encoded $codec to H.264"; } ;;
+esac
+
+media=$(ffprobe -v error -show_entries format=duration:stream=codec_type,width,height -of json "$dest/$file" 2>/dev/null || echo '{}')
+record=$(jq -n --arg file "$file" --arg url "$url" --arg kind "$kind" --arg title "$title" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --argjson info "${info:-null}" --argjson media "$media" '{
+    file: $file, url: $url, title: $title, fetched_at: $at,
+    creator: ($info | if . then (.uploader // .channel // null) else null end),
+    # a numeric uploader_id (an Instagram account number) is not a handle; the channel is
+    creator_handle: ($info | if . then ([.uploader_id, .channel, .channel_id] | map(select(. != null and (tostring | test("^[0-9]+$") | not))) | .[0] // null) else null end),
+    creator_url: ($info | if . then (.uploader_url // .channel_url
+      // (if .extractor_key == "Instagram" and .channel then "https://www.instagram.com/\(.channel)/" else null end)) else null end),
+    site: ($info | if . then .extractor_key else "file" end),
+    duration: ($media.format.duration // null | if . then tonumber else null end),
+    has_video: ([$media.streams[]? | select(.codec_type == "video")] | length > 0),
+    has_audio: ([$media.streams[]? | select(.codec_type == "audio")] | length > 0),
+    width: ([$media.streams[]? | select(.codec_type == "video") | .width][0] // null),
+    height: ([$media.streams[]? | select(.codec_type == "video") | .height][0] // null)
+  }')
+list="$dest/fetched.json"
+[ -f "$list" ] || echo '{"assets":[]}' > "$list"
+jq --argjson r "$record" '.assets = ([.assets[] | select(.file != $r.file)] + [$r])' "$list" > "$list.tmp" && mv "$list.tmp" "$list"
+
+# link it into the project, like drive/ and scenes/
+project="$repo/edit/projects/$slug"
+if [ -d "$project" ]; then
+  mkdir -p "$project/assets"
+  [ -e "$project/assets/fetched" ] || ln -s "$dest" "$project/assets/fetched"
+  grep -qx '/fetched' "$project/assets/.gitignore" 2>/dev/null || echo /fetched >> "$project/assets/.gitignore"
+fi
+echo "fetched $dest/$file  (assets/fetched/$file in the project)"
+printf '%s' "$record" | jq -r 'if .creator then "credit: \(.creator)\(if .creator_handle then " (@\(.creator_handle | ltrimstr("@")))" else "" end) \(.creator_url // "")" else empty end'

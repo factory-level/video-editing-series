@@ -1,0 +1,9 @@
+#!/bin/sh
+# Bring photos and videos from Google Photos into a reel's drive/ folder, read only: it prints a
+# Google Photos link, you tap the shots, and the originals download. See reels/README.md.
+#   reels/photos --login                                 once: sign in, read only
+#   reels/photos <nnnn-slug> [--new] [--max N] [--plan] [--force]
+#   reels/photos <nnnn-slug> <share link> [--new]          what a Google Photos share link shares
+here=$(dirname "$(readlink -f "$0")")
+command -v python3 >/dev/null 2>&1 || { echo "reels/photos needs python3" >&2; exit 1; }
+exec python3 -u "$here/photos.py" "$@"

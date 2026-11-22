@@ -1,0 +1,7 @@
+#!/bin/sh
+# Cut the silence out of a reel's clips: every pause over --min-pause inside a clip becomes a jump
+# cut. Writes tightened copies to edit/tight/; edit/scenes/ is left as it is. See reels/README.md.
+#   reels/tighten <nnnn-slug> [--min-pause 0.3] [--keep 0.08] [--plan] [--force]
+here=$(dirname "$(readlink -f "$0")")
+command -v uv >/dev/null 2>&1 || { echo "reels/tighten needs uv: https://docs.astral.sh/uv/" >&2; exit 1; }
+exec uv run --quiet "$here/tighten.py" "$@"

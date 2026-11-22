@@ -1,0 +1,13 @@
+#!/bin/sh
+# Reels (server): a prompted reel from Google Drive footage. See reels/README.md.
+#   bin/reel <drive folder> <nnnn-slug> --prompt "<text>"   pull, set up and queue it for the reels team
+#   bin/reel <drive folder> <nnnn-slug> --plan              list what would be pulled; change nothing
+#   bin/reel sync|tighten|finish|deliver <nnnn-slug> [...]          one step by hand
+#   bin/reel fetch <nnnn-slug> <url> [--name <name>]       download an outside asset (an Instagram reel, a video, a file)
+#   bin/reel photos <nnnn-slug>                            pick shots in Google Photos (read only) into drive/
+root=$(dirname "$(readlink -f "$0")")/..
+case "${1:-}" in
+  -h|--help|'') sed -n '2,7s/^# \{0,1\}//p' "$0"; exit 0 ;;
+  sync|tighten|mix|finish|deliver|pull|fetch|photos) step=$1; shift; exec "$root/reels/$step" "$@" ;;
+esac
+exec "$root/reels/launch" "$@"

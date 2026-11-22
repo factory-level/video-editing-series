@@ -8,6 +8,11 @@ renders/
 .film/
 .DS_Store
 .thumbnails/
+.transcode-cache/
+.waveform-cache/
+.media/
+# browser automation screenshots and logs
+.playwright-mcp/
 # stage 1 media: large, copied to the server beside the repo, never committed
 direct/takes/
 *.wav

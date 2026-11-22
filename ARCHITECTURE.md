@@ -3,16 +3,25 @@
 The wiring between the voice director, the laptop and the server. The overview diagram is in the
 [README](README.md#how-it-fits-together); this file covers each link, and says which are built.
 
+There are [two ways to make content](README.md#two-ways-to-make-content). Most of this file is
+**continuous** (record live, cut as you film). **Reels** (Google Drive footage plus a prompt,
+server only) are in [the last section](#reels-google-drive-to-instagram).
+
 | Link | State |
 | --- | --- |
 | Shim to camera, microphone, teleprompter | Built and tested |
 | MCP server (`direct/ctl mcp`) to shim | Built and tested locally |
 | ChatGPT voice to MCP server, through the OpenAI tunnel | Profile written, not tried |
-| Take upload to the server | Not built |
-| Callback to OpenRig on the server | Not built; commands below are checked against `rig` 0.6.10 help only |
+| Take upload to the server | Built: `direct/handoff`, run by the shim on `cut` in continuous mode; tested with real camera stops |
+| Queue item for the first-edit team | Built: same step, `rig queue create` over SSH; the cutter claimed it within seconds |
 | `first-edit/launch`: waveform alignment, transcription, scenes and clips | Built; tested on generated sample recordings only |
 | `first-edit/assemble`: best clips onto the HyperFrames raw timeline | Built; tested on the same samples |
 | OpenRig team `first-edit` (cutter, assembler) | Built; ran a sample recording from queue item to open timeline unattended |
+| Reels: Drive folder to `drive/` (`reels/pull`, gws) | Built; not yet run against a real Drive folder |
+| Reels: video and audio paired into recordings (`reels/sync`) | Built; tested on generated footage |
+| Reels: cut, silence out, render, loudness and Instagram export (`first-edit/launch`, `reels/tighten`, `reels/finish`) | Built; tested by hand on the same footage |
+| Reels: upload back to Drive (`reels/deliver`, gws) | Built; not yet run against a real Drive folder |
+| OpenRig team `reels` (sync, cut, edit, grade, finish) | Written; not yet run |
 
 ## One take, end to end
 
@@ -152,3 +161,46 @@ take's upload and cut. Earlier clips are not rewritten, so trims a person has al
 kept. The other clips stay in their scene folders, one `src` change away.
 
 Nothing creative happens here. Effects, keying, b-roll, titles and music belong to stage 2.
+
+## Reels: Google Drive to Instagram
+
+The other way to make content. It runs on the server alone: no laptop, camera or voice session.
+Details and commands are in [`reels/README.md`](reels/README.md).
+
+```mermaid
+sequenceDiagram
+    actor You
+    participant Drive as Google Drive
+    participant Launch as reels/launch (server)
+    participant Rig as OpenRig: reels
+    participant Disk as Content disk
+
+    You->>Launch: bin/reel <folder> <nnnn-slug> --prompt "…"
+    Launch->>Drive: gws: list the folder, download each file
+    Drive-->>Disk: drive/ (md5 checked), prompt.md, source.json
+    Launch->>Rig: rig queue create, to reel-sync@reels
+    Rig->>Disk: sync: pair each video with its audio, raw/<nn>/
+    Rig->>Disk: cut: first-edit/launch, edit/scenes/; reels/tighten, edit/tight/
+    Rig->>Rig: edit: 9:16 composition from the prompt
+    Rig->>Rig: grade: correction, then the look
+    Rig->>Disk: finish: sound effects, render, -14 LUFS, Instagram encode, edit/final/
+    Rig->>Drive: gws: upload <nnnn-slug>.mp4, md5 checked
+    Rig-->>You: queue item closed with the Drive link and the review address
+```
+
+**Sync.** Footage from a phone or camera usually comes with a separate recorder file. `reels/sync`
+pairs each video with the audio file whose sound matches its scratch sound, using first edit's
+alignment (the loudness-envelope cross-correlation and its `clear` and `alike` checks). The search
+reaches as far as the audio is long, so one long recorder file can cover several videos. Each
+video becomes a recording, `raw/<nn>/`, holding a link to the video and its own stretch of the
+audio as `studio.wav`, so first edit sees exactly the layout it gets from the laptop.
+
+**Cut.** `first-edit/launch` on each recording, unchanged: it lines the two up to the frame,
+transcribes and cuts. Clips that say the same thing share a scene, so takes are grouped by idea
+even where a "cut cut" was missed. Then `reels/tighten` cuts every pause inside a clip out as a
+jump cut, into `edit/tight/`; the editor builds from those.
+
+**Edit, grade, finish.** Here reels differ from continuous: the creative edit is done by agents,
+following the prompt. It is a HyperFrames composition at 1080x1920. Grading uses HyperFrames'
+media treatments. `reels/finish` normalizes the render in two passes to -14 LUFS and -1.5 dBTP and
+encodes it as Instagram asks for Reels. The reel goes back to Drive; a person posts it.
